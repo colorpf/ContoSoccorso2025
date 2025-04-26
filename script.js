@@ -257,9 +257,10 @@ document.addEventListener('DOMContentLoaded', () => {
         return newItem;
     }
 
-    const APPSCRIPT_URL = "https://script.google.com/macros/s/AKfycbw_PzkAN-3ieroC6Fso_OeYl32FcgUtiSbL1KD1xGA0iyZ33NdAVM_u2HwNda3oECU/exec";
+    const APPSCRIPT_URL = "https://script.google.com/macros/s/AKfycbx409jYxcCxoH1AA8kbrR7g4BM8_HQgf1MKzhTNSbnFVWzBJmmGU5PxQshH5M7fwUI/exec";
 
     function inviaDatiAlFoglio(data) {
+        console.log("Invio dati al foglio:", data);
         fetch(APPSCRIPT_URL, {
             method: "POST",
             body: JSON.stringify(data),
@@ -267,8 +268,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 "Content-Type": "application/json"
             }
         })
-        .then(response => response.json())
+        .then(response => {
+            console.log("Risposta ricevuta:", response);
+            if (!response.ok) {
+                throw new Error(`Server response: ${response.status} ${response.statusText}`);
+            }
+            return response.json();
+        })
         .then(result => {
+            console.log("Dati elaborati:", result);
             if (result.status === "success") {
                 statusP.textContent = "✅ Dati inviati e salvati nel foglio!";
             } else {
@@ -276,7 +284,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         })
         .catch(error => {
-            statusP.textContent = "❌ Errore di rete: " + error;
+            console.error("Errore completo:", error);
+            statusP.textContent = "❌ Errore di rete: " + error.message;
         });
     }
 
