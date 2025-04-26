@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conto Soccorso 2025 - Registratore Vocale</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        table#recordedDataTable th, table#recordedDataTable td {
+            padding: 0.5em 1.5em;
+            text-align: left;
+        }
+        table#recordedDataTable th {
+            background: #f0f0f0;
+        }
+        table#recordedDataTable td {
+            background: #fff;
+        }
+        button.delete-row {
+            background: #e74c3c;
+            color: #fff;
+            border: none;
+            padding: 0.3em 0.8em;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button.delete-row:hover {
+            background: #c0392b;
+        }
+        button#clearListButton {
+            background: #f39c12;
+            color: #fff;
+            border: none;
+            padding: 0.5em 1.2em;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-bottom: 1em;
+        }
+        button#clearListButton:hover {
+            background: #d35400;
+        }
+    </style>
+</head>
+<body>
+    <h1>Conto Soccorso 2025 - Registratore Spese Vocale</h1>
+
+    <button id="startButton">Avvia Registrazione</button>
+    
+    <h2>Stato</h2>
+    <p id="status">Pronto per iniziare...</p>
+
+    <h2>Testo Riconosciuto (Grezzo)</h2>
+    <div id="rawText">...</div>
+
+    <h2>Dati Estratti (JSON)</h2>
+    <pre id="parsedData">...</pre>
+
+    <!-- Pulsante per svuotare la lista -->
+    <button id="clearListButton">Svuota Lista</button>
+
+    <h2>Lista Dati Registrati</h2>
+    <table id="recordedDataTable">
+        <thead>
+            <tr>
+                <th>Data</th>
+                <th>Categoria</th>
+                <th>Tipo</th>
+                <th>Importo (€)</th>
+                <th>Descrizione</th>
+                <th>Elimina</th>
+            </tr>
+        </thead>
+        <tbody id="recordedDataBody">
+            <!-- Le righe verranno aggiunte qui da JavaScript -->
+        </tbody>
+    </table>
+
+    <script src="script.js"></script>
+</body>
+</html>

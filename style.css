@@ -1,0 +1,66 @@
+body {
+    font-family: sans-serif;
+    padding: 20px;
+    background-color: #f4f4f4;
+}
+
+h1, h2 {
+    color: #333;
+}
+
+button {
+    padding: 15px 25px;
+    font-size: 1.2em;
+    cursor: pointer;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    margin-bottom: 20px;
+}
+
+button:hover {
+    background-color: #0056b3;
+}
+
+button:disabled {
+    background-color: #cccccc;
+    cursor: not-allowed;
+}
+
+/* Stile per il pulsante durante la registrazione */
+button.recording {
+    background-color: #dc3545; /* Rosso */
+    /* Aggiungi un'icona o animazione se vuoi */
+    /* Esempio con pseudo-elemento:
+    position: relative;
+    padding-left: 40px; */
+}
+
+/* Esempio icona con pseudo-elemento (richiede aggiustamenti)
+button.recording::before {
+    content: '🔴';
+    position: absolute;
+    left: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 1em;
+} */
+
+#status {
+    font-style: italic;
+    color: #555;
+}
+
+#rawText, #parsedData {
+    background-color: #fff;
+    border: 1px solid #ccc;
+    padding: 10px;
+    min-height: 50px;
+    white-space: pre-wrap; /* Per andare a capo automaticamente */
+    word-wrap: break-word;
+}
+
+pre {
+    font-family: monospace;
+}
