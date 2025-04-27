@@ -262,7 +262,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return newItem;
     }
 
-    const APPSCRIPT_URL = "https://script.google.com/macros/s/AKfycbzNcH2SsKuDoxm7wmHbm5mThmdYmRjFaK2rwjmShXi1xZREy0vifTKmD8PscBcC5Q/exec";
+    const APPSCRIPT_URL = "https://script.google.com/macros/s/AKfycbxnEXCRQMN7UXSEelQcZAk8aQ-LtJuWXuphE8SZk2XYTdokM5WDNjAXKNzwbSwRWFE/exec"; // URL script originale (nuova distribuzione form data)
 
     function inviaDatiAlFoglio(data) {
         console.log("Invio dati al foglio (MODALITÀ FORM DATA PER TEST):", data);
