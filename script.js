@@ -185,8 +185,9 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log("Parsing testo:", text);
         const lowerText = text.toLowerCase();
 
-        // --- NUOVO: Check per comando Nicholas ---
-        if (lowerText.startsWith("nicholas") || lowerText.startsWith("nicola")) {
+        // --- Check per comando Nicholas (con sinonimi: nico) ---
+        // Usa regex con \\b per matchare parola intera all'inizio
+        if (/^(nicholas|nicola|nico)\b/.test(lowerText)) {
             console.log("Rilevato comando Nicholas.");
             let nicholasItem = {
                 type: "NICHOLAS_ENTRY",
@@ -196,8 +197,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 note: ""
             };
 
-            // Estrai Ore (REGEX CORRETTA: con UNA sola \\)
-            const oreMatch = lowerText.match(/(\d+)\s*(ora|ore)/);
+            // Estrai Ore (REGEX CORRETTA: con UNA sola \\, aggiunto \\b, 'ora/ore' già gestito)
+            const oreMatch = lowerText.match(/(\d+)\s*(ora|ore)\b/);
             if (oreMatch) {
                 nicholasItem.ore = oreMatch[1];
                 console.log("Ore estratte:", nicholasItem.ore);
@@ -212,42 +213,48 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-            // Estrai Cantiere (REGEX CORRETTA: con UNA sola \\)
-            const cantiereMatch = lowerText.match(/cantiere\s+(.+?)(?=\s+note|$)/);
+            // Estrai Cantiere (REGEX CORRETTA: con UNA sola \\, aggiunto sinonimo 'cantieri', \\b, case-insensitive)
+            // Nota: il testo del cantiere è ora nel gruppo di cattura 2
+            const cantiereRegex = /\b(cantiere|cantieri)\b\s+(.+?)(?=\s+\b(note|nota)\b|$)/i;
+            const cantiereMatch = lowerText.match(cantiereRegex);
             let cantiereFoundExplicitly = false;
             if (cantiereMatch) {
-                nicholasItem.cantiere = cantiereMatch[1].trim();
+                nicholasItem.cantiere = cantiereMatch[2].trim(); // Usa gruppo 2
                 cantiereFoundExplicitly = true;
                 console.log("Cantiere estratto (esplicito):", nicholasItem.cantiere);
             }
 
-            // Estrai Note (REGEX CORRETTA: con UNA sola \\)
-            const noteMatch = lowerText.match(/note\s+(.+)/);
+            // Estrai Note (REGEX CORRETTA: con UNA sola \\, aggiunto sinonimo 'nota', \\b, case-insensitive)
+            // Nota: il testo delle note è ora nel gruppo di cattura 2
+            const noteRegex = /\b(note|nota)\b\s+(.+)/i;
+            const noteMatch = lowerText.match(noteRegex);
             if (noteMatch) {
-                nicholasItem.note = noteMatch[1].trim();
+                nicholasItem.note = noteMatch[2].trim(); // Usa gruppo 2
                 console.log("Note estratte:", nicholasItem.note);
             }
 
             // Fallback Cantiere (SOLO se non trovato esplicitamente)
             if (!cantiereFoundExplicitly) {
-                 console.log("Parola 'cantiere' non trovata o testo non corrispondente, uso fallback.");
-                 let remainingText = lowerText.replace(/^(nicholas|nicola)\s*/, '');
+                 console.log("Parola 'cantiere/cantieri' non trovata o testo non corrispondente, uso fallback.");
+                 // Rimuovi comando iniziale (con sinonimi)
+                 let remainingText = lowerText.replace(/^(nicholas|nicola|nico)\b\s*/, '');
+                 // Rimuovi ore
                  if (oreMatch) {
                      remainingText = remainingText.replace(oreMatch[0], '').trim();
                  } else if (nicholasItem.ore !== "0") {
-                     // Usa una regex per rimuovere solo il numero come parola intera (REGEX CORRETTA: con UNA sola \\)
-                     remainingText = remainingText.replace(new RegExp(`\b${nicholasItem.ore}\b`), '').trim();
+                     remainingText = remainingText.replace(new RegExp(`\\b${nicholasItem.ore}\\b`), '').trim();
                  }
+                 // Rimuovi note (con sinonimi, case-insensitive)
                  if (noteMatch) {
-                     // Rimuovi "note" e tutto ciò che segue (REGEX CORRETTA: con UNA sola \\)
-                     remainingText = remainingText.replace(/note\s+.*/, '').trim();
+                     // Usa la regex per rimuovere la parte delle note
+                     remainingText = remainingText.replace(noteRegex, '').trim();
                  }
                  nicholasItem.cantiere = remainingText;
                  console.log("Cantiere (fallback):", nicholasItem.cantiere);
             }
 
             console.log("Dati Nicholas estratti:", nicholasItem);
-            return nicholasItem; // Restituisce l'oggetto Nicholas
+            return nicholasItem;
         }
         // --- FINE Check per comando Nicholas ---
 
