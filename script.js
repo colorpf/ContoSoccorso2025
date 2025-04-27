@@ -182,107 +182,116 @@ document.addEventListener('DOMContentLoaded', () => {
     function parseSpeechResult(text) {
         console.log("Parsing testo:", text);
         let newItem = {
-            tipo: "Non definito", // Default
+            tipo: "Non definito",
             data: new Date().toLocaleDateString('it-IT'),
             importo: "0.00",
-            categoria: "", // Default vuoto
+            categoria: "",
             descrizione: text // Inizia con il testo completo
         };
 
-        // --- Tipo (più tollerante) ---
-        // Aggiunto "uscite"
-        const paroleSpesa = ["spesa", "spese", "spes", "pesa", "pagato", "acquisto", "pagamento", "pagata", "pagate", "pagati", "uscite", "uscita"];
-        const paroleEntrata = ["entrata", "entrate", "incasso", "ricevuto", "ricevuta", "ricevute", "ricevuti", "incassato", "incassata", "incassate", "incassati", "acconto"]; // Aggiunto acconto come possibile entrata
+        let matchedTypeKeyword = null; // Memorizza la parola chiave che ha matchato il tipo
+        let matchedCategoryKeyword = null; // Memorizza la parola chiave che ha matchato la categoria
 
-        // Cerca prima le entrate, poi le spese per evitare conflitti (es. "acconto spesa")
+        // --- Tipo (più tollerante) ---
+        const paroleSpesa = ["spesa", "spese", "spes", "pesa", "pagato", "acquisto", "pagamento", "pagata", "pagate", "pagati", "uscite", "uscita"];
+        const paroleEntrata = ["entrata", "entrate", "incasso", "ricevuto", "ricevuta", "ricevute", "ricevuti", "incassato", "incassata", "incassate", "incassati", "acconto"];
+
         for (const parola of paroleEntrata) {
-            if (text.toLowerCase().includes(parola)) {
+             const regex = new RegExp(`\\b${parola}\\b`, 'i');
+             if (text.match(regex)) {
                 newItem.tipo = "Entrata";
+                matchedTypeKeyword = parola; // Salva la parola esatta
                 break;
             }
         }
-        // Se non è entrata, controlla se è spesa
         if (newItem.tipo === "Non definito") {
             for (const parola of paroleSpesa) {
-                if (text.toLowerCase().includes(parola)) {
+                 const regex = new RegExp(`\\b${parola}\\b`, 'i');
+                 if (text.match(regex)) {
                     newItem.tipo = "Spesa";
+                    matchedTypeKeyword = parola; // Salva la parola esatta
                     break;
                 }
             }
         }
-        // Se ancora non definito dopo aver cercato spese ed entrate, rimane "Non definito"
 
-        // --- Categorie principali (tolleranti, con varianti comuni) ---
+        // --- Categorie principali ---
         const categorieMap = {
-            // Manteniamo le categorie esistenti
-            "Materiali": ["materiali", "materiale", "materia", "mat", "material", "mater", "colorificio", "ferramenta"], // Aggiunto colorificio/ferramenta
+            "Materiali": ["materiali", "materiale", "materia", "mat", "material", "mater", "colorificio", "ferramenta"],
             "Nicolas": ["nicolas", "nicola", "nicholas", "nikolas", "nikola"],
-            "Auto": ["auto", "macchina", "veicolo", "car", "automezzo", "gasolio", "diesel", "benzina"], // Aggiunto carburanti
+            "Auto": ["auto", "macchina", "veicolo", "car", "automezzo", "gasolio", "diesel", "benzina"],
             "Tasse": ["tasse", "tassa", "imposte", "imposta", "tributi", "tributo", "f24"],
             "Commercialista": ["commercialista", "commerciale", "contabile", "ragioniere"],
             "Spese Casa": ["spese casa", "casa", "affitto", "utenze", "bollette", "domestico", "domestica"],
             "Magazzino": ["magazzino", "magazino", "deposito", "scorta", "scorte"],
-            "Extra": ["extra", "varie", "vario", "altro", "diverso"] // Extra rimane come fallback
+            "Extra": ["extra", "varie", "vario", "altro", "diverso"]
         };
+        outerLoop: // Etichetta per uscire dal loop esterno
         for (const [categoriaStandard, varianti] of Object.entries(categorieMap)) {
             for (const variante of varianti) {
-                // Usiamo regex con word boundary (\b) per matchare parole intere dove possibile
-                const regex = new RegExp(`\\b${variante}\\b`, 'i'); // Case-insensitive
+                const regex = new RegExp(`\\b${variante}\\b`, 'i');
                 if (text.match(regex)) {
                     newItem.categoria = categoriaStandard;
-                    break;
+                    matchedCategoryKeyword = variante; // Salva la parola esatta
+                    break outerLoop; // Trovata categoria, esci da entrambi i loop
                 }
             }
-            if (newItem.categoria) break; // Trovata categoria, esci dal loop principale
         }
 
-        // --- Importo (come prima) ---
+        // --- Importo ---
         let importo = "0.00";
-        // Regex migliorata per catturare numeri con . o , come separatore decimale e opzionalmente €
+        let matchedImportoString = null; // Memorizza la stringa esatta dell'importo trovata
         const importoRegex = /(\d+([.,]\d{1,2})?)\s*(euro|€)?|(euro|€)\s*(\d+([.,]\d{1,2})?)/i;
         const matchImporto = text.match(importoRegex);
         if (matchImporto) {
-            // Prendi il gruppo che contiene il numero (o il primo o il quinto)
             const numStr = matchImporto[1] || matchImporto[5];
             if (numStr) {
-                 importo = numStr.replace(',', '.'); // Normalizza a punto decimale
+                 importo = numStr.replace(',', '.');
+                 matchedImportoString = matchImporto[0]; // Salva l'intera occorrenza (es. "€50", "100 euro")
             }
         }
         newItem.importo = importo;
 
         // --- Descrizione raffinata ---
         let refinedDescription = text;
-        // Rimuovi le parole chiave del tipo trovate
-        if (newItem.tipo === "Spesa") {
-             paroleSpesa.forEach(keyword => {
-                 const regex = new RegExp(`\\b${keyword}\\b`, 'gi');
-                 refinedDescription = refinedDescription.replace(regex, '');
-             });
-        } else if (newItem.tipo === "Entrata") {
-             paroleEntrata.forEach(keyword => {
-                 const regex = new RegExp(`\\b${keyword}\\b`, 'gi');
-                 refinedDescription = refinedDescription.replace(regex, '');
-             });
+
+        // Rimuovi la parola chiave del TIPO se è stata trovata
+        if (matchedTypeKeyword) {
+            const regex = new RegExp(`\\b${matchedTypeKeyword}\\b`, 'gi');
+            refinedDescription = refinedDescription.replace(regex, '');
         }
-        // Rimuovi le parole chiave della categoria trovata
-        if (newItem.categoria && categorieMap[newItem.categoria]) {
-             categorieMap[newItem.categoria].forEach(keyword => {
-                 const regex = new RegExp(`\\b${keyword}\\b`, 'gi');
-                 refinedDescription = refinedDescription.replace(regex, '');
-             });
+
+        // Rimuovi la parola chiave della CATEGORIA se è stata trovata
+        if (matchedCategoryKeyword) {
+            const regex = new RegExp(`\\b${matchedCategoryKeyword}\\b`, 'gi');
+            refinedDescription = refinedDescription.replace(regex, '');
         }
-        // Rimuovi l'importo trovato (con o senza euro)
-        if (matchImporto) {
-             refinedDescription = refinedDescription.replace(matchImporto[0], ''); // Rimuovi l'intera occorrenza trovata
+
+        // Rimuovi la stringa dell'IMPORTO se è stata trovata
+        if (matchedImportoString) {
+            // Escape caratteri speciali per la regex (come €)
+            const escapedImportoString = matchedImportoString.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regex = new RegExp(escapedImportoString, 'gi');
+            refinedDescription = refinedDescription.replace(regex, '');
         }
+
+        // **Gestione specifica "peso" vs "spesa"**
+        // Se il tipo è stato identificato come "Spesa" (magari per errore da "peso"),
+        // e la parola "peso" è presente nel testo originale, rimuovila.
+        if (newItem.tipo === "Spesa" && /\bpeso\b/i.test(text)) {
+             console.log("Rilevato 'Spesa' ma trovato 'peso' nel testo originale. Rimuovo 'peso'.");
+             refinedDescription = refinedDescription.replace(/\bpeso\b/gi, '');
+        }
+
         // Pulisci spazi extra e trim
         refinedDescription = refinedDescription.replace(/\s+/g, ' ').trim();
-        // Se la descrizione raffinata è vuota, usa quella originale meno pulita
+
+        // Se la descrizione raffinata è vuota, usa quella originale (meno probabile ora)
         newItem.descrizione = refinedDescription || text.replace(/\s+/g, ' ').trim();
 
-        // Se il tipo è ancora "Non definito", ma c'è un importo, prova a dedurlo
+
+        // --- Deduzione Tipo (come prima) ---
         if (newItem.tipo === "Non definito" && newItem.importo !== "0.00") {
-             // Logica euristica: se non ci sono parole chiave di entrata, assumi spesa
              let isEntrata = false;
              for (const parola of paroleEntrata) {
                  if (text.toLowerCase().includes(parola)) {
@@ -294,9 +303,7 @@ document.addEventListener('DOMContentLoaded', () => {
                  newItem.tipo = "Spesa";
                  console.log("Tipo dedotto come 'Spesa' per mancanza di parole chiave entrata.");
              }
-             // Altrimenti rimane "Non definito" e verrà gestito da Apps Script
         }
-
 
         console.log("Dati estratti:", newItem);
         return newItem;
