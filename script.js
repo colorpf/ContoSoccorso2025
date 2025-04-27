@@ -179,10 +179,13 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log("Parsing testo:", text);
         const lowerText = text.toLowerCase();
 
-        // --- Check per comando Nicholas (con sinonimi: nico, nicolas, REGEX CORRETTA) ---
-        // Usa regex per matchare parola chiave all'inizio seguita da spazio o fine stringa
-        if (/^(nicholas|nicola|nico|nicolas)(\s|$)/.test(lowerText)) { // AGGIUNTO 'nicolas'
-            console.log("Rilevato comando Nicholas.");
+        // --- Check per NICHOLAS_ENTRY (Più Specifico) ---
+        // Deve iniziare con una parola chiave Nicholas E contenere 'ora'/'ore'
+        const nicholasKeywordsRegex = /^(nicholas|nicola|nico|nicolas)(\s|$)/;
+        const hasOreKeyword = /\b(ora|ore)\b/.test(lowerText); // Cerca 'ora' o 'ore' come parola intera
+
+        if (nicholasKeywordsRegex.test(lowerText) && hasOreKeyword) {
+            console.log("Rilevato comando Nicholas (contiene 'ore').");
             let nicholasItem = {
                 type: "NICHOLAS_ENTRY",
                 data: new Date().toLocaleDateString('it-IT'),
@@ -191,7 +194,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 note: ""
             };
 
-            // Estrai Ore (REGEX CORRETTA: con UNA sola \\, aggiunto \b, 'ora/ore' già gestito)
+            // Estrai Ore (già presente)
             const oreMatch = lowerText.match(/(\d+)\s*(ora|ore)\b/);
             if (oreMatch) {
                 nicholasItem.ore = oreMatch[1];
@@ -207,8 +210,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-            // Estrai Cantiere (REGEX CORRETTA: con UNA sola \\, aggiunto sinonimo 'cantieri', \b, case-insensitive)
-            // Nota: il testo del cantiere è ora nel gruppo di cattura 2
+            // Estrai Cantiere (già presente)
             const cantiereRegex = /\b(cantiere|cantieri)\b\s+(.+?)(?=\s+\b(note|nota)\b|$)/i;
             const cantiereMatch = lowerText.match(cantiereRegex);
             let cantiereFoundExplicitly = false;
@@ -218,8 +220,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.log("Cantiere estratto (esplicito):", nicholasItem.cantiere);
             }
 
-            // Estrai Note (REGEX CORRETTA: con UNA sola \\, aggiunto sinonimo 'nota', \b, case-insensitive)
-            // Nota: il testo delle note è ora nel gruppo di cattura 2
+            // Estrai Note (già presente)
             const noteRegex = /\b(note|nota)\b\s+(.+)/i;
             const noteMatch = lowerText.match(noteRegex);
             if (noteMatch) {
@@ -230,8 +231,8 @@ document.addEventListener('DOMContentLoaded', () => {
             // Fallback Cantiere (SOLO se non trovato esplicitamente)
             if (!cantiereFoundExplicitly) {
                  console.log("Parola 'cantiere/cantieri' non trovata o testo non corrispondente, uso fallback.");
-                 // Rimuovi comando iniziale (con sinonimi, REGEX CORRETTA)
-                 let remainingText = lowerText.replace(/^(nicholas|nicola|nico|nicolas)(\s|$)/, '').trim(); // AGGIUNTO 'nicolas'
+                 // Rimuovi comando iniziale (USA LA REGEX CORRETTA)
+                 let remainingText = lowerText.replace(nicholasKeywordsRegex, '').trim();
                  // Rimuovi ore
                  if (oreMatch) {
                      remainingText = remainingText.replace(oreMatch[0], '').trim();
@@ -253,8 +254,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // --- FINE Check per comando Nicholas ---
 
 
-        // --- Logica Spesa/Entrata (invariata da prima) ---
-        console.log("Comando non Nicholas, procedo con Spesa/Entrata.");
+        // --- Logica Spesa/Entrata ---
+        // Se non è un comando Nicholas specifico (con 'ore'), procede qui
+        console.log("Comando non Nicholas specifico (senza 'ore') o diverso, procedo con Spesa/Entrata.");
         let newItem = {
             tipo: "Non definito",
             data: new Date().toLocaleDateString('it-IT'),
