@@ -110,17 +110,11 @@ document.addEventListener('DOMContentLoaded', () => {
             parsedDataDiv.textContent = JSON.stringify(newItem, null, 2);
 
             if (newItem && newItem.type !== "Non definito") { // Aggiungi solo se il parsing ha prodotto un tipo valido
-                 // Aggiungi alla tabella locale (potremmo volerla adattare per Nicholas?)
-                 // Per ora, aggiungiamo solo se è Spesa/Entrata per mantenere la struttura attuale
-                 if (newItem.type === 'SPESA' || newItem.type === 'ENTRATA') {
-                     currentData.push(newItem);
-                     saveData(currentData); // Salva in localStorage
-                     addRowToTable(newItem); // Aggiungi alla tabella HTML
-                 } else if (newItem.type === 'NICHOLAS_ENTRY') {
-                     // Non aggiungiamo alla tabella principale né a localStorage per ora
-                     // Potremmo creare una tabella separata per Nicholas se necessario
-                     console.log("Voce Nicholas registrata, non aggiunta alla tabella/localStorage principale.");
-                 }
+                 // --- MODIFICA: Aggiungi SEMPRE alla tabella locale e localStorage --- 
+                 currentData.push(newItem);
+                 saveData(currentData); // Salva in localStorage
+                 addRowToTable(newItem); // Aggiungi alla tabella HTML
+                 // --- FINE MODIFICA ---
 
                  // Invia i dati allo script Apps Script
                  inviaDatiAlFoglio(newItem); // Passa l'oggetto newItem direttamente
@@ -185,9 +179,9 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log("Parsing testo:", text);
         const lowerText = text.toLowerCase();
 
-        // --- Check per comando Nicholas (con sinonimi: nico, REGEX CORRETTA) ---
+        // --- Check per comando Nicholas (con sinonimi: nico, nicolas, REGEX CORRETTA) ---
         // Usa regex per matchare parola chiave all'inizio seguita da spazio o fine stringa
-        if (/^(nicholas|nicola|nico)(\s|$)/.test(lowerText)) {
+        if (/^(nicholas|nicola|nico|nicolas)(\s|$)/.test(lowerText)) { // AGGIUNTO 'nicolas'
             console.log("Rilevato comando Nicholas.");
             let nicholasItem = {
                 type: "NICHOLAS_ENTRY",
@@ -237,7 +231,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!cantiereFoundExplicitly) {
                  console.log("Parola 'cantiere/cantieri' non trovata o testo non corrispondente, uso fallback.");
                  // Rimuovi comando iniziale (con sinonimi, REGEX CORRETTA)
-                 let remainingText = lowerText.replace(/^(nicholas|nicola|nico)(\s|$)/, '').trim(); // Usa la nuova regex per rimuovere
+                 let remainingText = lowerText.replace(/^(nicholas|nicola|nico|nicolas)(\s|$)/, '').trim(); // AGGIUNTO 'nicolas'
                  // Rimuovi ore
                  if (oreMatch) {
                      remainingText = remainingText.replace(oreMatch[0], '').trim();
