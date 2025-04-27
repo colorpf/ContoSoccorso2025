@@ -179,131 +179,165 @@ document.addEventListener('DOMContentLoaded', () => {
     function parseSpeechResult(text) {
         console.log("Parsing testo:", text);
         let newItem = {
-            tipo: "Non definito",
+            tipo: "Non definito", // Default
             data: new Date().toLocaleDateString('it-IT'),
             importo: "0.00",
-            categoria: "",
-            descrizione: text
+            categoria: "", // Default vuoto
+            descrizione: text // Inizia con il testo completo
         };
 
-        // Tipo (più tollerante)
-        const paroleSpesa = ["spesa", "spese", "spes", "pesa", "pagato", "acquisto", "pagamento", "pagata", "pagate", "pagati"];
-        const paroleEntrata = ["entrata", "entrate", "incasso", "ricevuto", "ricevuta", "ricevute", "ricevuti", "incassato", "incassata", "incassate", "incassati"];
-        for (const parola of paroleSpesa) {
-            if (text.toLowerCase().includes(parola)) {
-                newItem.tipo = "Spesa";
-                break;
-            }
-        }
+        // --- Tipo (più tollerante) ---
+        // Aggiunto "uscite"
+        const paroleSpesa = ["spesa", "spese", "spes", "pesa", "pagato", "acquisto", "pagamento", "pagata", "pagate", "pagati", "uscite", "uscita"];
+        const paroleEntrata = ["entrata", "entrate", "incasso", "ricevuto", "ricevuta", "ricevute", "ricevuti", "incassato", "incassata", "incassate", "incassati", "acconto"]; // Aggiunto acconto come possibile entrata
+
+        // Cerca prima le entrate, poi le spese per evitare conflitti (es. "acconto spesa")
         for (const parola of paroleEntrata) {
             if (text.toLowerCase().includes(parola)) {
                 newItem.tipo = "Entrata";
                 break;
             }
         }
+        // Se non è entrata, controlla se è spesa
+        if (newItem.tipo === "Non definito") {
+            for (const parola of paroleSpesa) {
+                if (text.toLowerCase().includes(parola)) {
+                    newItem.tipo = "Spesa";
+                    break;
+                }
+            }
+        }
+        // Se ancora non definito dopo aver cercato spese ed entrate, rimane "Non definito"
 
-        // Categorie principali (tolleranti, con varianti comuni)
+        // --- Categorie principali (tolleranti, con varianti comuni) ---
         const categorieMap = {
-            "Materiali": ["materiali", "materiale", "materia", "mat", "material", "mater"],
+            // Manteniamo le categorie esistenti
+            "Materiali": ["materiali", "materiale", "materia", "mat", "material", "mater", "colorificio", "ferramenta"], // Aggiunto colorificio/ferramenta
             "Nicolas": ["nicolas", "nicola", "nicholas", "nikolas", "nikola"],
-            "Auto": ["auto", "macchina", "veicolo", "car", "automezzo"],
-            "Tasse": ["tasse", "tassa", "imposte", "imposta", "tributi", "tributo"],
+            "Auto": ["auto", "macchina", "veicolo", "car", "automezzo", "gasolio", "diesel", "benzina"], // Aggiunto carburanti
+            "Tasse": ["tasse", "tassa", "imposte", "imposta", "tributi", "tributo", "f24"],
             "Commercialista": ["commercialista", "commerciale", "contabile", "ragioniere"],
             "Spese Casa": ["spese casa", "casa", "affitto", "utenze", "bollette", "domestico", "domestica"],
             "Magazzino": ["magazzino", "magazino", "deposito", "scorta", "scorte"],
-            "Extra": ["extra", "varie", "vario", "altro", "diverso"]
+            "Extra": ["extra", "varie", "vario", "altro", "diverso"] // Extra rimane come fallback
         };
         for (const [categoriaStandard, varianti] of Object.entries(categorieMap)) {
             for (const variante of varianti) {
-                if (text.toLowerCase().includes(variante)) {
+                // Usiamo regex con word boundary (\b) per matchare parole intere dove possibile
+                const regex = new RegExp(`\\b${variante}\\b`, 'i'); // Case-insensitive
+                if (text.match(regex)) {
                     newItem.categoria = categoriaStandard;
                     break;
                 }
             }
-            if (newItem.categoria) break;
+            if (newItem.categoria) break; // Trovata categoria, esci dal loop principale
         }
 
-        // Importo (come prima)
+        // --- Importo (come prima) ---
         let importo = "0.00";
-        const numeriTrovati = text.match(/\d+([.,]\d{1,2})?/g);
-        if (numeriTrovati) {
-            for (const numStr of numeriTrovati) {
-                const patternNumCurrency = new RegExp(numStr.replace('.', '\\.') + "\\s*(euro|€)", 'i');
-                const patternCurrencyNum = new RegExp("(euro|€)\\s*" + numStr.replace('.', '\\.'), 'i');
-                if (text.match(patternNumCurrency) || text.match(patternCurrencyNum)) {
-                    importo = numStr.replace(',', '.');
-                    break;
-                }
+        // Regex migliorata per catturare numeri con . o , come separatore decimale e opzionalmente €
+        const importoRegex = /(\d+([.,]\d{1,2})?)\s*(euro|€)?|(euro|€)\s*(\d+([.,]\d{1,2})?)/i;
+        const matchImporto = text.match(importoRegex);
+        if (matchImporto) {
+            // Prendi il gruppo che contiene il numero (o il primo o il quinto)
+            const numStr = matchImporto[1] || matchImporto[5];
+            if (numStr) {
+                 importo = numStr.replace(',', '.'); // Normalizza a punto decimale
             }
         }
         newItem.importo = importo;
 
-        // Descrizione raffinata
-        let refinedDescription = text.toLowerCase();
-        // Usa [].concat(...Object.values(categorieMap)) per compatibilità universale
-        const keywordsToRemove = [
-            "spesa", "pagato", "acquisto", "entrata", "ricevuto", "incasso", "euro", "€",
-            ...[].concat(...Object.values(categorieMap))
-        ];
-        keywordsToRemove.forEach(keyword => {
-            const regex = new RegExp(`\\b${keyword}\\b`, 'gi');
-            refinedDescription = refinedDescription.replace(regex, '');
-        });
-        // Rimuovi anche simboli euro isolati
-        refinedDescription = refinedDescription.replace(/€/g, '');
-        if (newItem.importo !== "0.00") {
-            const importoPattern = newItem.importo.replace('.', '[.,]');
-            const importoRegex = new RegExp(importoPattern);
-            refinedDescription = refinedDescription.replace(importoRegex, '');
+        // --- Descrizione raffinata ---
+        let refinedDescription = text;
+        // Rimuovi le parole chiave del tipo trovate
+        if (newItem.tipo === "Spesa") {
+             paroleSpesa.forEach(keyword => {
+                 const regex = new RegExp(`\\b${keyword}\\b`, 'gi');
+                 refinedDescription = refinedDescription.replace(regex, '');
+             });
+        } else if (newItem.tipo === "Entrata") {
+             paroleEntrata.forEach(keyword => {
+                 const regex = new RegExp(`\\b${keyword}\\b`, 'gi');
+                 refinedDescription = refinedDescription.replace(regex, '');
+             });
         }
+        // Rimuovi le parole chiave della categoria trovata
+        if (newItem.categoria && categorieMap[newItem.categoria]) {
+             categorieMap[newItem.categoria].forEach(keyword => {
+                 const regex = new RegExp(`\\b${keyword}\\b`, 'gi');
+                 refinedDescription = refinedDescription.replace(regex, '');
+             });
+        }
+        // Rimuovi l'importo trovato (con o senza euro)
+        if (matchImporto) {
+             refinedDescription = refinedDescription.replace(matchImporto[0], ''); // Rimuovi l'intera occorrenza trovata
+        }
+        // Pulisci spazi extra e trim
         refinedDescription = refinedDescription.replace(/\s+/g, ' ').trim();
-        newItem.descrizione = refinedDescription || text;
+        // Se la descrizione raffinata è vuota, usa quella originale meno pulita
+        newItem.descrizione = refinedDescription || text.replace(/\s+/g, ' ').trim();
 
+        // Se il tipo è ancora "Non definito", ma c'è un importo, prova a dedurlo
+        if (newItem.tipo === "Non definito" && newItem.importo !== "0.00") {
+             // Logica euristica: se non ci sono parole chiave di entrata, assumi spesa
+             let isEntrata = false;
+             for (const parola of paroleEntrata) {
+                 if (text.toLowerCase().includes(parola)) {
+                     isEntrata = true;
+                     break;
+                 }
+             }
+             if (!isEntrata) {
+                 newItem.tipo = "Spesa";
+                 console.log("Tipo dedotto come 'Spesa' per mancanza di parole chiave entrata.");
+             }
+             // Altrimenti rimane "Non definito" e verrà gestito da Apps Script
+        }
+
+
+        console.log("Dati estratti:", newItem);
         return newItem;
     }
 
-    const APPSCRIPT_URL = "https://script.google.com/macros/s/AKfycbxnEXCRQMN7UXSEelQcZAk8aQ-LtJuWXuphE8SZk2XYTdokM5WDNjAXKNzwbSwRWFE/exec"; // URL script originale (nuova distribuzione form data)
-
+    // Rimuovi "(MODALITÀ FORM DATA PER TEST)" dai log
     function inviaDatiAlFoglio(data) {
-        console.log("Invio dati al foglio (MODALITÀ FORM DATA PER TEST):", data);
+        console.log("Invio dati al foglio:", data); // Log pulito
 
         // Converti l'oggetto dati in parametri URL encoded
         const formData = new URLSearchParams();
-        formData.append('type', data.type);
+        formData.append('type', data.type); // Invia il tipo così com'è (potrebbe essere "NON DEFINITO")
         formData.append('importo', data.importo);
-        formData.append('categoria', data.categoria || ''); // Assicurati che non sia null/undefined
-        formData.append('descrizione', data.descrizione || ''); // Assicurati che non sia null/undefined
+        formData.append('categoria', data.categoria || '');
+        formData.append('descrizione', data.descrizione || '');
 
         fetch(APPSCRIPT_URL, {
             method: "POST",
-            // mode: 'no-cors', // RIMUOVI o commenta questa riga
-            body: formData, // Invia come URLSearchParams
+            body: formData,
             headers: {
-                // Imposta il Content-Type corretto per i dati form
                 "Content-Type": "application/x-www-form-urlencoded"
             }
         })
         .then(response => {
-            console.log("Risposta ricevuta (form data):", response);
+            console.log("Risposta ricevuta:", response); // Log pulito
             if (!response.ok) {
-                // Prova a leggere il corpo anche in caso di errore per debug
                 return response.text().then(text => {
                      throw new Error(`Server response: ${response.status} ${response.statusText}. Body: ${text}`);
                 });
             }
-            return response.json(); // Prova a interpretare come JSON (lo script minimale dovrebbe rispondere JSON)
+            return response.json();
         })
         .then(result => {
-            console.log("Dati elaborati (form data):", result);
+            console.log("Dati elaborati:", result); // Log pulito
             if (result.status === "success") {
-                statusP.textContent = "✅ Dati inviati (form data) e salvati nel foglio!";
+                statusP.textContent = "✅ Dati inviati e salvati nel foglio!";
             } else {
-                statusP.textContent = "❌ Errore dal foglio (form data): " + result.message;
+                // Mostra l'errore specifico restituito da Apps Script
+                statusP.textContent = `❌ Errore dal foglio: ${result.message}`;
             }
         })
         .catch(error => {
-            console.error("Errore completo (form data):", error);
-            statusP.textContent = "❌ Errore di rete (form data): " + error.message;
+            console.error("Errore completo:", error);
+            statusP.textContent = "❌ Errore di rete: " + error.message;
         });
     }
 
