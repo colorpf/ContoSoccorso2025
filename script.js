@@ -105,28 +105,30 @@ document.addEventListener('DOMContentLoaded', () => {
             const speechResult = event.results[event.results.length - 1][0].transcript.trim();
             rawTextDiv.textContent = `Testo riconosciuto: ${speechResult}`;
 
-            // --- Elaborazione del testo (DA IMPLEMENTARE MEGLIO) ---
-            // Per ora, usiamo il testo come descrizione e mettiamo valori placeholder
             const newItem = parseSpeechResult(speechResult); // Chiama la funzione di parsing
 
             parsedDataDiv.textContent = JSON.stringify(newItem, null, 2);
 
-            // Aggiungi, salva e aggiorna la tabella
-            if (newItem) { // Aggiungi solo se il parsing ha prodotto qualcosa
-                 currentData.push(newItem);
-                 saveData(currentData);
-                 addRowToTable(newItem);
-                 // Dopo aver aggiunto la riga alla tabella e salvato in localStorage
-                 inviaDatiAlFoglio({
-                     type: newItem.tipo.toUpperCase(),
-                     importo: Number(newItem.importo),
-                     categoria: newItem.categoria ? newItem.categoria.toLowerCase() : "",
-                     descrizione: newItem.descrizione
-                 });
+            if (newItem && newItem.type !== "Non definito") { // Aggiungi solo se il parsing ha prodotto un tipo valido
+                 // Aggiungi alla tabella locale (potremmo volerla adattare per Nicholas?)
+                 // Per ora, aggiungiamo solo se è Spesa/Entrata per mantenere la struttura attuale
+                 if (newItem.type === 'SPESA' || newItem.type === 'ENTRATA') {
+                     currentData.push(newItem);
+                     saveData(currentData); // Salva in localStorage
+                     addRowToTable(newItem); // Aggiungi alla tabella HTML
+                 } else if (newItem.type === 'NICHOLAS_ENTRY') {
+                     // Non aggiungiamo alla tabella principale né a localStorage per ora
+                     // Potremmo creare una tabella separata per Nicholas se necessario
+                     console.log("Voce Nicholas registrata, non aggiunta alla tabella/localStorage principale.");
+                 }
+
+                 // Invia i dati allo script Apps Script
+                 inviaDatiAlFoglio(newItem); // Passa l'oggetto newItem direttamente
+
                  statusP.textContent = 'Registrazione completata.';
             } else {
-                 statusP.textContent = 'Non sono riuscito a interpretare il comando.';
-                 parsedDataDiv.textContent = '{}'; // Pulisce l'area JSON
+                 statusP.textContent = 'Non sono riuscito a interpretare il comando o tipo non riconosciuto.';
+                 parsedDataDiv.textContent = '{}';
             }
         };
 
@@ -181,6 +183,73 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Funzione di Parsing aggiornata ---
     function parseSpeechResult(text) {
         console.log("Parsing testo:", text);
+        const lowerText = text.toLowerCase();
+
+        // --- NUOVO: Check per comando Nicholas ---
+        if (lowerText.startsWith("nicholas") || lowerText.startsWith("nicola")) {
+            console.log("Rilevato comando Nicholas.");
+            let nicholasItem = {
+                type: "NICHOLAS_ENTRY", // Nuovo tipo specifico
+                data: new Date().toLocaleDateString('it-IT'),
+                ore: "0",
+                cantiere: "",
+                note: ""
+            };
+
+            // Estrai Ore (cerca un numero seguito da "ora" o "ore")
+            const oreMatch = lowerText.match(/(\\d+)\\s*(ora|ore)/);
+            if (oreMatch) {
+                nicholasItem.ore = oreMatch[1];
+                console.log("Ore estratte:", nicholasItem.ore);
+            } else {
+                // Prova a cercare solo un numero se "ora/ore" non c'è
+                const numMatch = lowerText.match(/\\b(\\d+)\\b/);
+                if (numMatch) {
+                    nicholasItem.ore = numMatch[1];
+                    console.log("Ore estratte (solo numero):", nicholasItem.ore);
+                } else {
+                     console.warn("Numero di ore non trovato nel comando Nicholas.");
+                }
+            }
+
+            // Estrai Cantiere (cerca "cantiere" seguito da testo)
+            const cantiereMatch = lowerText.match(/cantiere\\s+(.+?)(?=\\s+note|$)/); // Prende testo dopo "cantiere" fino a "note" o fine stringa
+            if (cantiereMatch) {
+                nicholasItem.cantiere = cantiereMatch[1].trim();
+                console.log("Cantiere estratto:", nicholasItem.cantiere);
+            } else {
+                 console.log("Parola 'cantiere' non trovata, cerco testo dopo le ore.");
+                 // Fallback: prendi il testo dopo "nicholas", ore e "ore"
+                 let remainingText = lowerText.replace(/^(nicholas|nicola)\\s*/, '');
+                 if (oreMatch) remainingText = remainingText.replace(oreMatch[0], '').trim();
+                 else if (nicholasItem.ore !== "0") remainingText = remainingText.replace(new RegExp(`\\b${nicholasItem.ore}\\b`), '').trim(); // Rimuovi solo il numero se trovato
+
+                 // Rimuovi eventuale "note ..."
+                 remainingText = remainingText.replace(/\\s+note\\s+.*$/, '').trim();
+                 nicholasItem.cantiere = remainingText; // Assume che il resto sia il cantiere
+                 console.log("Cantiere (fallback):", nicholasItem.cantiere);
+            }
+
+
+            // Estrai Note (cerca "note" seguito da testo)
+            const noteMatch = lowerText.match(/note\\s+(.+)/);
+            if (noteMatch) {
+                nicholasItem.note = noteMatch[1].trim();
+                console.log("Note estratte:", nicholasItem.note);
+            } else {
+                 console.log("Parola 'note' non trovata.");
+                 // Se non c'è "note", e il cantiere è stato preso col fallback,
+                 // potrebbe non esserci nulla per le note. Lasciamo vuoto.
+            }
+
+            console.log("Dati Nicholas estratti:", nicholasItem);
+            return nicholasItem; // Restituisce l'oggetto Nicholas
+        }
+        // --- FINE Check per comando Nicholas ---
+
+
+        // --- Logica Spesa/Entrata (invariata da prima) ---
+        console.log("Comando non Nicholas, procedo con Spesa/Entrata.");
         let newItem = {
             tipo: "Non definito",
             data: new Date().toLocaleDateString('it-IT'),
@@ -193,15 +262,13 @@ document.addEventListener('DOMContentLoaded', () => {
         let matchedCategoryKeyword = null;
         let matchedImportoString = null;
 
-        // --- Tipo (più tollerante e con più sinonimi) ---
-        // AGGIUNTO "peso" e "pesa" come sinonimi di spesa per workaround riconoscimento vocale
         const paroleSpesa = ["spesa", "spese", "spes", "pagato", "acquisto", "acquisti", "pagamento", "pagamenti", "uscita", "uscite", "peso", "pesa"];
         const paroleEntrata = ["entrata", "entrate", "incasso", "ricevuto", "ricevuti", "guadagno", "guadagni", "ricavo", "ricavi", "incassato", "incassata", "incassate", "incassati", "acconto"];
 
         // Prima Entrate
         for (const parola of paroleEntrata) {
              const regex = new RegExp(`\\b${parola}\\b`, 'i');
-             if (text.match(regex)) {
+             if (lowerText.match(regex)) { // Usa lowerText
                 newItem.tipo = "Entrata";
                 matchedTypeKeyword = parola;
                 break;
@@ -211,30 +278,30 @@ document.addEventListener('DOMContentLoaded', () => {
         if (newItem.tipo === "Non definito") {
             for (const parola of paroleSpesa) {
                  const regex = new RegExp(`\\b${parola}\\b`, 'i');
-                 if (text.match(regex)) {
+                 if (lowerText.match(regex)) { // Usa lowerText
                     newItem.tipo = "Spesa";
-                    matchedTypeKeyword = parola; // Ora può essere "peso" o "pesa"
+                    matchedTypeKeyword = parola;
                     break;
                 }
             }
         }
 
-        // --- Categorie principali (con sinonimi aggiunti) ---
+        // --- Categorie principali ---
         const categorieMap = {
             "Materiali": ["materiali", "materiale", "materia", "mat", "material", "mater", "colorificio", "ferramenta"],
             "Nicolas": ["nicolas", "nicola", "nicholas", "nikolas", "nikola"],
-            "Auto": ["auto", "macchina", "veicolo", "car", "automezzo", "gasolio", "diesel", "benzina", "meccanico"], // Aggiunto meccanico
+            "Auto": ["auto", "macchina", "veicolo", "car", "automezzo", "gasolio", "diesel", "benzina", "meccanico"],
             "Tasse": ["tasse", "tassa", "imposte", "imposta", "tributi", "tributo", "f24"],
-            "Commercialista": ["commercialista", "commerciale", "contabile", "ragioniere", "fiscozen"], // Aggiunto fiscozen
-            "Spese Casa": ["spese casa", "casa", "affitto", "utenze", "bollette", "domestico", "domestica", "pulizia", "pulizie"], // Aggiunto pulizia/e
+            "Commercialista": ["commercialista", "commerciale", "contabile", "ragioniere", "fiscozen"],
+            "Spese Casa": ["spese casa", "casa", "affitto", "utenze", "bollette", "domestico", "domestica", "pulizia", "pulizie"],
             "Magazzino": ["magazzino", "magazino", "deposito", "scorta", "scorte"],
-            "Extra": ["extra", "varie", "vario", "altro", "diverso", "gatto"] // Aggiunto gatto come esempio in Extra
+            "Extra": ["extra", "varie", "vario", "altro", "diverso", "gatto"]
         };
         outerLoop:
         for (const [categoriaStandard, varianti] of Object.entries(categorieMap)) {
             for (const variante of varianti) {
                 const regex = new RegExp(`\\b${variante}\\b`, 'i');
-                if (text.match(regex)) {
+                if (lowerText.match(regex)) { // Usa lowerText
                     newItem.categoria = categoriaStandard;
                     matchedCategoryKeyword = variante;
                     break outerLoop;
@@ -242,10 +309,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // --- Importo (invariato) ---
+        // --- Importo ---
         let importo = "0.00";
         const importoRegex = /(\d+([.,]\d{1,2})?)\s*(euro|€)?|(euro|€)\s*(\d+([.,]\d{1,2})?)/i;
-        const matchImporto = text.match(importoRegex);
+        const matchImporto = lowerText.match(importoRegex); // Usa lowerText
         if (matchImporto) {
             const numStr = matchImporto[1] || matchImporto[5];
             if (numStr) {
@@ -255,30 +322,22 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         newItem.importo = importo;
 
-        // --- Descrizione raffinata (logica migliorata) ---
-        let refinedDescription = text;
+        // --- Descrizione raffinata ---
+        let refinedDescription = text; // Inizia con l'originale per mantenere maiuscole/minuscole
 
-        // Rimuovi parola chiave TIPO trovata (ora rimuoverà anche "peso" o "pesa" se hanno matchato)
         if (matchedTypeKeyword) {
             const regex = new RegExp(`\\b${matchedTypeKeyword}\\b`, 'gi');
             refinedDescription = refinedDescription.replace(regex, '');
         }
-
-        // Rimuovi parola chiave CATEGORIA trovata
         if (matchedCategoryKeyword) {
             const regex = new RegExp(`\\b${matchedCategoryKeyword}\\b`, 'gi');
             refinedDescription = refinedDescription.replace(regex, '');
         }
-
-        // Rimuovi stringa IMPORTO trovata
         if (matchedImportoString) {
             const escapedImportoString = matchedImportoString.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             const regex = new RegExp(escapedImportoString, 'gi');
             refinedDescription = refinedDescription.replace(regex, '');
         }
-
-        // **Gestione specifica "peso"**
-        // Questo blocco diventa meno cruciale ma lo lasciamo per sicurezza
         if (/\bpeso\b/i.test(refinedDescription)) {
              console.log("Rilevato 'peso' nel testo. Rimuovo (controllo di sicurezza).");
              refinedDescription = refinedDescription.replace(/\bpeso\b/gi, '');
@@ -288,19 +347,14 @@ document.addEventListener('DOMContentLoaded', () => {
              refinedDescription = refinedDescription.replace(/\bpesa\b/gi, '');
         }
 
-
-        // Pulisci spazi extra e trim
         refinedDescription = refinedDescription.replace(/\s+/g, ' ').trim();
-
-        // Se la descrizione raffinata è vuota, usa quella originale pulita solo da spazi
         newItem.descrizione = refinedDescription || text.replace(/\s+/g, ' ').trim();
 
-
-        // --- Deduzione Tipo (invariato) ---
+        // --- Deduzione Tipo ---
         if (newItem.tipo === "Non definito" && newItem.importo !== "0.00") {
              let isEntrata = false;
              for (const parola of paroleEntrata) {
-                 if (text.toLowerCase().includes(parola)) {
+                 if (lowerText.includes(parola)) { // Usa lowerText
                      isEntrata = true;
                      break;
                  }
@@ -311,20 +365,26 @@ document.addEventListener('DOMContentLoaded', () => {
              }
         }
 
-        console.log("Dati estratti:", newItem);
+        console.log("Dati Spesa/Entrata estratti:", newItem);
         return newItem;
     }
 
-    // Rimuovi "(MODALITÀ FORM DATA PER TEST)" dai log
     function inviaDatiAlFoglio(data) {
-        console.log("Invio dati al foglio:", data); // Log pulito
-
-        // Converti l'oggetto dati in parametri URL encoded
+        console.log("Invio dati al foglio:", data);
         const formData = new URLSearchParams();
-        formData.append('type', data.type); // Invia il tipo così com'è (potrebbe essere "NON DEFINITO")
-        formData.append('importo', data.importo);
-        formData.append('categoria', data.categoria || '');
-        formData.append('descrizione', data.descrizione || '');
+
+        // Aggiungi parametri in base al tipo
+        formData.append('type', data.type); // Sempre presente
+
+        if (data.type === 'NICHOLAS_ENTRY') {
+            formData.append('ore', data.ore || '0');
+            formData.append('cantiere', data.cantiere || '');
+            formData.append('note', data.note || '');
+        } else { // SPESA o ENTRATA (o altro futuro)
+            formData.append('importo', data.importo || '0.00');
+            formData.append('categoria', data.categoria || '');
+            formData.append('descrizione', data.descrizione || '');
+        }
 
         fetch(APPSCRIPT_URL, {
             method: "POST",
@@ -345,9 +405,9 @@ document.addEventListener('DOMContentLoaded', () => {
         .then(result => {
             console.log("Dati elaborati:", result); // Log pulito
             if (result.status === "success") {
-                statusP.textContent = "✅ Dati inviati e salvati nel foglio!";
+                // Messaggio più generico o specifico in base al risultato?
+                statusP.textContent = `✅ ${result.message || 'Dati inviati con successo!'}`;
             } else {
-                // Mostra l'errore specifico restituito da Apps Script
                 statusP.textContent = `❌ Errore dal foglio: ${result.message}`;
             }
         })
