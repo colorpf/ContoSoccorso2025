@@ -189,20 +189,20 @@ document.addEventListener('DOMContentLoaded', () => {
         if (lowerText.startsWith("nicholas") || lowerText.startsWith("nicola")) {
             console.log("Rilevato comando Nicholas.");
             let nicholasItem = {
-                type: "NICHOLAS_ENTRY", // Nuovo tipo specifico
+                type: "NICHOLAS_ENTRY",
                 data: new Date().toLocaleDateString('it-IT'),
                 ore: "0",
                 cantiere: "",
                 note: ""
             };
 
-            // Estrai Ore (cerca un numero seguito da "ora" o "ore")
+            // Estrai Ore (CORRETTO: \\d+ e \\s*)
             const oreMatch = lowerText.match(/(\\d+)\\s*(ora|ore)/);
             if (oreMatch) {
                 nicholasItem.ore = oreMatch[1];
                 console.log("Ore estratte:", nicholasItem.ore);
             } else {
-                // Prova a cercare solo un numero se "ora/ore" non c'è
+                // Prova a cercare solo un numero (CORRETTO: \\b)
                 const numMatch = lowerText.match(/\\b(\\d+)\\b/);
                 if (numMatch) {
                     nicholasItem.ore = numMatch[1];
@@ -212,34 +212,42 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-            // Estrai Cantiere (cerca "cantiere" seguito da testo)
-            const cantiereMatch = lowerText.match(/cantiere\\s+(.+?)(?=\\s+note|$)/); // Prende testo dopo "cantiere" fino a "note" o fine stringa
+            // Estrai Cantiere (CORRETTO: \\s+)
+            const cantiereMatch = lowerText.match(/cantiere\\s+(.+?)(?=\\s+note|$)/);
+            let cantiereFoundExplicitly = false;
             if (cantiereMatch) {
                 nicholasItem.cantiere = cantiereMatch[1].trim();
-                console.log("Cantiere estratto:", nicholasItem.cantiere);
-            } else {
-                 console.log("Parola 'cantiere' non trovata, cerco testo dopo le ore.");
-                 // Fallback: prendi il testo dopo "nicholas", ore e "ore"
-                 let remainingText = lowerText.replace(/^(nicholas|nicola)\\s*/, '');
-                 if (oreMatch) remainingText = remainingText.replace(oreMatch[0], '').trim();
-                 else if (nicholasItem.ore !== "0") remainingText = remainingText.replace(new RegExp(`\\b${nicholasItem.ore}\\b`), '').trim(); // Rimuovi solo il numero se trovato
-
-                 // Rimuovi eventuale "note ..."
-                 remainingText = remainingText.replace(/\\s+note\\s+.*$/, '').trim();
-                 nicholasItem.cantiere = remainingText; // Assume che il resto sia il cantiere
-                 console.log("Cantiere (fallback):", nicholasItem.cantiere);
+                cantiereFoundExplicitly = true;
+                console.log("Cantiere estratto (esplicito):", nicholasItem.cantiere);
             }
 
-
-            // Estrai Note (cerca "note" seguito da testo)
+            // Estrai Note (CORRETTO: \\s+)
             const noteMatch = lowerText.match(/note\\s+(.+)/);
             if (noteMatch) {
                 nicholasItem.note = noteMatch[1].trim();
                 console.log("Note estratte:", nicholasItem.note);
-            } else {
-                 console.log("Parola 'note' non trovata.");
-                 // Se non c'è "note", e il cantiere è stato preso col fallback,
-                 // potrebbe non esserci nulla per le note. Lasciamo vuoto.
+            }
+
+            // Fallback Cantiere (SOLO se non trovato esplicitamente)
+            if (!cantiereFoundExplicitly) {
+                 console.log("Parola 'cantiere' non trovata o testo non corrispondente, uso fallback.");
+                 // Prendi il testo dopo "nicholas/nicola"
+                 let remainingText = lowerText.replace(/^(nicholas|nicola)\\s*/, '');
+                 // Rimuovi le ore trovate (sia "X ore" che solo "X")
+                 if (oreMatch) {
+                     remainingText = remainingText.replace(oreMatch[0], '').trim();
+                 } else if (nicholasItem.ore !== "0") {
+                     // Usa una regex per rimuovere solo il numero come parola intera
+                     remainingText = remainingText.replace(new RegExp(`\\b${nicholasItem.ore}\\b`), '').trim();
+                 }
+                 // Rimuovi le note trovate (se presenti)
+                 if (noteMatch) {
+                     // Usa una regex per rimuovere "note" e tutto ciò che segue
+                     remainingText = remainingText.replace(/note\\s+.*/, '').trim();
+                 }
+                 // Ciò che rimane è il cantiere (potrebbe essere vuoto)
+                 nicholasItem.cantiere = remainingText;
+                 console.log("Cantiere (fallback):", nicholasItem.cantiere);
             }
 
             console.log("Dati Nicholas estratti:", nicholasItem);
