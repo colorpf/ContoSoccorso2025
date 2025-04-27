@@ -196,13 +196,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 note: ""
             };
 
-            // Estrai Ore (REGEX CORRETTA: senza \\ extra)
+            // Estrai Ore (REGEX CORRETTA: con UNA sola \\)
             const oreMatch = lowerText.match(/(\d+)\s*(ora|ore)/);
             if (oreMatch) {
                 nicholasItem.ore = oreMatch[1];
                 console.log("Ore estratte:", nicholasItem.ore);
             } else {
-                // Prova a cercare solo un numero (REGEX CORRETTA: senza \\ extra)
+                // Prova a cercare solo un numero (REGEX CORRETTA: con UNA sola \\)
                 const numMatch = lowerText.match(/\b(\d+)\b/);
                 if (numMatch) {
                     nicholasItem.ore = numMatch[1];
@@ -212,7 +212,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-            // Estrai Cantiere (REGEX CORRETTA: senza \\ extra)
+            // Estrai Cantiere (REGEX CORRETTA: con UNA sola \\)
             const cantiereMatch = lowerText.match(/cantiere\s+(.+?)(?=\s+note|$)/);
             let cantiereFoundExplicitly = false;
             if (cantiereMatch) {
@@ -221,7 +221,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.log("Cantiere estratto (esplicito):", nicholasItem.cantiere);
             }
 
-            // Estrai Note (REGEX CORRETTA: senza \\ extra)
+            // Estrai Note (REGEX CORRETTA: con UNA sola \\)
             const noteMatch = lowerText.match(/note\s+(.+)/);
             if (noteMatch) {
                 nicholasItem.note = noteMatch[1].trim();
@@ -235,10 +235,11 @@ document.addEventListener('DOMContentLoaded', () => {
                  if (oreMatch) {
                      remainingText = remainingText.replace(oreMatch[0], '').trim();
                  } else if (nicholasItem.ore !== "0") {
+                     // Usa una regex per rimuovere solo il numero come parola intera (REGEX CORRETTA: con UNA sola \\)
                      remainingText = remainingText.replace(new RegExp(`\b${nicholasItem.ore}\b`), '').trim();
                  }
                  if (noteMatch) {
-                     // Rimuovi "note" e tutto ciò che segue
+                     // Rimuovi "note" e tutto ciò che segue (REGEX CORRETTA: con UNA sola \\)
                      remainingText = remainingText.replace(/note\s+.*/, '').trim();
                  }
                  nicholasItem.cantiere = remainingText;
