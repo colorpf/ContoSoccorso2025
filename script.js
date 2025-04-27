@@ -265,32 +265,26 @@ document.addEventListener('DOMContentLoaded', () => {
     const APPSCRIPT_URL = "https://script.google.com/macros/s/AKfycbzNcH2SsKuDoxm7wmHbm5mThmdYmRjFaK2rwjmShXi1xZREy0vifTKmD8PscBcC5Q/exec";
 
     function inviaDatiAlFoglio(data) {
-        console.log("Invio dati al foglio:", data);
+        console.log("Invio dati al foglio (MODALITÀ NO-CORS PER TEST):", data);
         fetch(APPSCRIPT_URL, {
             method: "POST",
+            mode: 'no-cors', // <<< AGGIUNGI QUESTA RIGA
             body: JSON.stringify(data),
             headers: {
                 "Content-Type": "application/json"
             }
         })
         .then(response => {
-            console.log("Risposta ricevuta:", response);
-            if (!response.ok) {
-                throw new Error(`Server response: ${response.status} ${response.statusText}`);
-            }
-            return response.json();
+            // Con 'no-cors', la response sarà "opaca" e non potrai leggerla
+            console.log("Risposta ricevuta (opaca a causa di no-cors):", response);
+            // Non possiamo controllare response.ok o response.json() qui
+            statusP.textContent = "✅ Dati inviati (verifica log Apps Script). Risposta non leggibile.";
         })
-        .then(result => {
-            console.log("Dati elaborati:", result);
-            if (result.status === "success") {
-                statusP.textContent = "✅ Dati inviati e salvati nel foglio!";
-            } else {
-                statusP.textContent = "❌ Errore dal foglio: " + result.message;
-            }
-        })
+        // .then(result => { ... }) // Questa parte non funzionerà con no-cors
         .catch(error => {
-            console.error("Errore completo:", error);
-            statusP.textContent = "❌ Errore di rete: " + error.message;
+            // Anche gli errori potrebbero essere diversi con no-cors
+            console.error("Errore completo (no-cors):", error);
+            statusP.textContent = "❌ Errore di rete (no-cors): " + error.message;
         });
     }
 
