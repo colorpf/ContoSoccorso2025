@@ -5,6 +5,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const parsedDataDiv = document.getElementById('parsedData');
     const recordedDataTableBody = document.getElementById('recordedDataBody');
 
+    // URL DELLO SCRIPT APPS SCRIPT ORIGINALE (che legge form data)
+    const APPSCRIPT_URL = "https://script.google.com/macros/s/AKfycbxnEXCRQMN7UXSEelQcZAk8aQ-LtJuWXuphE8SZk2XYTdokM5WDNjAXKNzwbSwRWFE/exec";
+
     // 1. Ottenere l'anno corrente o un anno di test
     // Assicurati che questa riga sia COMMENTATA (inizi con //)
     // const currentYear = 2026;
