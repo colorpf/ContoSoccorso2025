@@ -194,8 +194,8 @@ document.addEventListener('DOMContentLoaded', () => {
         let matchedImportoString = null;
 
         // --- Tipo (più tollerante e con più sinonimi) ---
-        // Rimosso "pesa" per evitare conflitti con "peso"
-        const paroleSpesa = ["spesa", "spese", "spes", "pagato", "acquisto", "acquisti", "pagamento", "pagamenti", "uscita", "uscite"];
+        // AGGIUNTO "peso" e "pesa" come sinonimi di spesa per workaround riconoscimento vocale
+        const paroleSpesa = ["spesa", "spese", "spes", "pagato", "acquisto", "acquisti", "pagamento", "pagamenti", "uscita", "uscite", "peso", "pesa"];
         const paroleEntrata = ["entrata", "entrate", "incasso", "ricevuto", "ricevuti", "guadagno", "guadagni", "ricavo", "ricavi", "incassato", "incassata", "incassate", "incassati", "acconto"];
 
         // Prima Entrate
@@ -213,7 +213,7 @@ document.addEventListener('DOMContentLoaded', () => {
                  const regex = new RegExp(`\\b${parola}\\b`, 'i');
                  if (text.match(regex)) {
                     newItem.tipo = "Spesa";
-                    matchedTypeKeyword = parola;
+                    matchedTypeKeyword = parola; // Ora può essere "peso" o "pesa"
                     break;
                 }
             }
@@ -258,7 +258,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // --- Descrizione raffinata (logica migliorata) ---
         let refinedDescription = text;
 
-        // Rimuovi parola chiave TIPO trovata
+        // Rimuovi parola chiave TIPO trovata (ora rimuoverà anche "peso" o "pesa" se hanno matchato)
         if (matchedTypeKeyword) {
             const regex = new RegExp(`\\b${matchedTypeKeyword}\\b`, 'gi');
             refinedDescription = refinedDescription.replace(regex, '');
@@ -278,12 +278,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // **Gestione specifica "peso"**
-        // Rimuovi la parola "peso" SEMPRE se presente, dato che non è più una keyword di spesa
-        // e spesso è un errore di riconoscimento.
+        // Questo blocco diventa meno cruciale ma lo lasciamo per sicurezza
         if (/\bpeso\b/i.test(refinedDescription)) {
-             console.log("Rilevato 'peso' nel testo. Rimuovo.");
+             console.log("Rilevato 'peso' nel testo. Rimuovo (controllo di sicurezza).");
              refinedDescription = refinedDescription.replace(/\bpeso\b/gi, '');
         }
+         if (/\bpesa\b/i.test(refinedDescription)) {
+             console.log("Rilevato 'pesa' nel testo. Rimuovo (controllo di sicurezza).");
+             refinedDescription = refinedDescription.replace(/\bpesa\b/gi, '');
+        }
+
 
         // Pulisci spazi extra e trim
         refinedDescription = refinedDescription.replace(/\s+/g, ' ').trim();
