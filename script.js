@@ -237,7 +237,6 @@ document.addEventListener('DOMContentLoaded', () => {
                  if (oreMatch) {
                      remainingText = remainingText.replace(oreMatch[0], '').trim();
                  } else if (nicholasItem.ore !== "0") {
-                     // Usa una regex per rimuovere solo il numero come parola intera
                      remainingText = remainingText.replace(new RegExp(`\\b${nicholasItem.ore}\\b`), '').trim();
                  }
                  // Rimuovi le note trovate (se presenti)
