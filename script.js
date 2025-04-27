@@ -265,26 +265,45 @@ document.addEventListener('DOMContentLoaded', () => {
     const APPSCRIPT_URL = "https://script.google.com/macros/s/AKfycbzNcH2SsKuDoxm7wmHbm5mThmdYmRjFaK2rwjmShXi1xZREy0vifTKmD8PscBcC5Q/exec";
 
     function inviaDatiAlFoglio(data) {
-        console.log("Invio dati al foglio (MODALITÀ NO-CORS PER TEST):", data);
+        console.log("Invio dati al foglio (MODALITÀ FORM DATA PER TEST):", data);
+
+        // Converti l'oggetto dati in parametri URL encoded
+        const formData = new URLSearchParams();
+        formData.append('type', data.type);
+        formData.append('importo', data.importo);
+        formData.append('categoria', data.categoria || ''); // Assicurati che non sia null/undefined
+        formData.append('descrizione', data.descrizione || ''); // Assicurati che non sia null/undefined
+
         fetch(APPSCRIPT_URL, {
             method: "POST",
-            mode: 'no-cors', // <<< AGGIUNGI QUESTA RIGA
-            body: JSON.stringify(data),
+            // mode: 'no-cors', // RIMUOVI o commenta questa riga
+            body: formData, // Invia come URLSearchParams
             headers: {
-                "Content-Type": "application/json"
+                // Imposta il Content-Type corretto per i dati form
+                "Content-Type": "application/x-www-form-urlencoded"
             }
         })
         .then(response => {
-            // Con 'no-cors', la response sarà "opaca" e non potrai leggerla
-            console.log("Risposta ricevuta (opaca a causa di no-cors):", response);
-            // Non possiamo controllare response.ok o response.json() qui
-            statusP.textContent = "✅ Dati inviati (verifica log Apps Script). Risposta non leggibile.";
+            console.log("Risposta ricevuta (form data):", response);
+            if (!response.ok) {
+                // Prova a leggere il corpo anche in caso di errore per debug
+                return response.text().then(text => {
+                     throw new Error(`Server response: ${response.status} ${response.statusText}. Body: ${text}`);
+                });
+            }
+            return response.json(); // Prova a interpretare come JSON (lo script minimale dovrebbe rispondere JSON)
         })
-        // .then(result => { ... }) // Questa parte non funzionerà con no-cors
+        .then(result => {
+            console.log("Dati elaborati (form data):", result);
+            if (result.status === "success") {
+                statusP.textContent = "✅ Dati inviati (form data) e salvati nel foglio!";
+            } else {
+                statusP.textContent = "❌ Errore dal foglio (form data): " + result.message;
+            }
+        })
         .catch(error => {
-            // Anche gli errori potrebbero essere diversi con no-cors
-            console.error("Errore completo (no-cors):", error);
-            statusP.textContent = "❌ Errore di rete (no-cors): " + error.message;
+            console.error("Errore completo (form data):", error);
+            statusP.textContent = "❌ Errore di rete (form data): " + error.message;
         });
     }
 
