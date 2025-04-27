@@ -262,7 +262,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return newItem;
     }
 
-    const APPSCRIPT_URL = "https://script.google.com/macros/s/AKfycbx409jYxcCxoH1AA8kbrR7g4BM8_HQgf1MKzhTNSbnFVWzBJmmGU5PxQshH5M7fwUI/exec";
+    const APPSCRIPT_URL = "https://script.google.com/macros/s/AKfycbzNcH2SsKuDoxm7wmHbm5mThmdYmRjFaK2rwjmShXi1xZREy0vifTKmD8PscBcC5Q/exec";
 
     function inviaDatiAlFoglio(data) {
         console.log("Invio dati al foglio:", data);
