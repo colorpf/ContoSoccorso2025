@@ -136,7 +136,12 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (event.error === 'audio-capture') {
                 errorMessage += 'Problema con il microfono.';
             } else if (event.error === 'not-allowed') {
-                errorMessage += 'Permesso di usare il microfono negato.';
+                errorMessage = '⚠️ PERMESSO MICROFONO NEGATO ⚠️\n';
+                errorMessage += 'Per permettere la registrazione vocale devi:\n';
+                errorMessage += '1. Usare un sito HTTPS (GitHub Pages) oppure\n';
+                errorMessage += '2. Vai su chrome://settings/content/microphone e aggiungi questo indirizzo tra i siti consentiti.\n';
+                errorMessage += '3. In alternativa, prova con Edge, che è più permissivo per siti locali.';
+                startButton.disabled = true;
             } else {
                 errorMessage += event.error;
             }
