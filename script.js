@@ -258,7 +258,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Se non è un comando Nicholas specifico (con 'ore'), procede qui
         console.log("Comando non Nicholas specifico (senza 'ore') o diverso, procedo con Spesa/Entrata.");
         let newItem = {
-            tipo: "Non definito",
+            type: "Non definito", // <-- correzione: era tipo
             data: new Date().toLocaleDateString('it-IT'),
             importo: "0.00",
             categoria: "",
@@ -276,17 +276,17 @@ document.addEventListener('DOMContentLoaded', () => {
         for (const parola of paroleEntrata) {
              const regex = new RegExp(`\\b${parola}\\b`, 'i');
              if (lowerText.match(regex)) { // Usa lowerText
-                newItem.tipo = "Entrata";
+                newItem.type = "Entrata"; // <-- correzione: era tipo
                 matchedTypeKeyword = parola;
                 break;
             }
         }
         // Poi Spese (se non già Entrata)
-        if (newItem.tipo === "Non definito") {
+        if (newItem.type === "Non definito") { // <-- correzione: era tipo
             for (const parola of paroleSpesa) {
                  const regex = new RegExp(`\\b${parola}\\b`, 'i');
                  if (lowerText.match(regex)) { // Usa lowerText
-                    newItem.tipo = "Spesa";
+                    newItem.type = "Spesa"; // <-- correzione: era tipo
                     matchedTypeKeyword = parola;
                     break;
                 }
@@ -358,7 +358,7 @@ document.addEventListener('DOMContentLoaded', () => {
         newItem.descrizione = refinedDescription || text.replace(/\s+/g, ' ').trim();
 
         // --- Deduzione Tipo ---
-        if (newItem.tipo === "Non definito" && newItem.importo !== "0.00") {
+        if (newItem.type === "Non definito" && newItem.importo !== "0.00") { // <-- correzione: era tipo
              let isEntrata = false;
              for (const parola of paroleEntrata) {
                  if (lowerText.includes(parola)) { // Usa lowerText
@@ -367,7 +367,7 @@ document.addEventListener('DOMContentLoaded', () => {
                  }
              }
              if (!isEntrata) {
-                 newItem.tipo = "Spesa";
+                 newItem.type = "Spesa"; // <-- correzione: era tipo
                  console.log("Tipo dedotto come 'Spesa' per mancanza di parole chiave entrata.");
              }
         }
