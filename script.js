@@ -190,6 +190,12 @@ document.addEventListener('DOMContentLoaded', () => {
         text = wordsToNumbers(text);
         const lowerText = text.toLowerCase();
 
+        // --- NUOVO: Se il comando inizia con numero + 'ora/ore', trattalo come Nicholas ---
+        if (/^(\d+)\s*(ora|ore)\b/.test(lowerText)) {
+            // Prependi 'nicholas ' per riutilizzare la logica esistente
+            return parseSpeechResult('nicholas ' + text);
+        }
+
         // --- Check per NICHOLAS_ENTRY (Più Specifico) ---
         // Deve iniziare con una parola chiave Nicholas E contenere 'ora'/'ore'
         const nicholasKeywordsRegex = /^(nicholas|nicola|nico|nicolas)(\s|$)/;
