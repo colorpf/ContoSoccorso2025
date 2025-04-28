@@ -382,7 +382,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // --- Descrizione raffinata ---
         let refinedDescription = text; // Inizia con l'originale per mantenere maiuscole/minuscole
 
-        if (matchedTypeKeyword) {
+        if (matchedTypeKeyword && matchedTypeKeyword !== "acconto") {
             const regex = new RegExp(`\\b${matchedTypeKeyword}\\b`, 'gi');
             refinedDescription = refinedDescription.replace(regex, '');
         }
