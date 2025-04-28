@@ -280,7 +280,10 @@ document.addEventListener('DOMContentLoaded', () => {
         let matchedCategoryKeyword = null;
         let matchedImportoString = null;
 
-        const paroleSpesa = ["spesa", "spese", "spes", "pagato", "acquisto", "acquisti", "pagamento", "pagamenti", "uscita", "uscite", "peso", "pesa"];
+        const paroleSpesa = [
+            "spesa", "spese", "spes", "pagato", "acquisto", "acquisti", "pagamento", "pagamenti",
+            "uscita", "uscite", "peso", "pesa", "acconto" // <--- AGGIUNGI QUI
+        ];
         const paroleEntrata = ["entrata", "entrate", "incasso", "ricevuto", "ricevuti", "guadagno", "guadagni", "ricavo", "ricavi", "incassato", "incassata", "incassate", "incassati", "acconto"];
 
         // Prima Entrate
