@@ -175,8 +175,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- Funzione di Parsing aggiornata ---
+    // Funzione per convertire numeri in lettere in cifre
+    function wordsToNumbers(text) {
+        const map = {
+            'zero': '0', 'uno': '1', 'una': '1', 'due': '2', 'tre': '3', 'quattro': '4',
+            'cinque': '5', 'sei': '6', 'sette': '7', 'otto': '8', 'nove': '9', 'dieci': '10'
+        };
+        return text.replace(/\b(zero|uno|una|due|tre|quattro|cinque|sei|sette|otto|nove|dieci)\b/gi,
+            match => map[match.toLowerCase()]);
+    }
+
     function parseSpeechResult(text) {
-        console.log("Parsing testo:", text);
+        // Prima di tutto, normalizza i numeri in lettere in cifre
+        text = wordsToNumbers(text);
         const lowerText = text.toLowerCase();
 
         // --- Check per NICHOLAS_ENTRY (Più Specifico) ---
@@ -296,7 +307,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // --- Categorie principali ---
         const categorieMap = {
             "Materiali": ["materiali", "materiale", "materia", "mat", "material", "mater", "colorificio", "ferramenta"],
-            "Nicolas": ["nicolas", "nicola", "nicholas", "nikolas", "nikola"],
+            "Capo": ["capo", "boss"], // Sostituito Nicolas con Capo
             "Auto": ["auto", "macchina", "veicolo", "car", "automezzo", "gasolio", "diesel", "benzina", "meccanico"],
             "Tasse": ["tasse", "tassa", "imposte", "imposta", "tributi", "tributo", "f24"],
             "Commercialista": ["commercialista", "commerciale", "contabile", "ragioniere", "fiscozen"],
