@@ -288,27 +288,57 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const paroleSpesa = [
             "spesa", "spese", "spes", "pagato", "acquisto", "acquisti", "pagamento", "pagamenti",
-            "uscita", "uscite", "peso", "pesa", "acconto" // <--- AGGIUNGI QUI
+            "uscita", "uscite", "peso", "pesa", "auto", "materiale", "materiali", "tasse", "commercialista", "magazzino", "casa", "capo"
         ];
-        const paroleEntrata = ["entrata", "entrate", "incasso", "ricevuto", "ricevuti", "guadagno", "guadagni", "ricavo", "ricavi", "incassato", "incassata", "incassate", "incassati", "acconto"];
+        const paroleEntrata = [
+            "entrata", "entrate", "incasso", "ricevuto", "ricevuti", "guadagno", "guadagni", "ricavo", "ricavi", "incassato", "incassata", "incassate", "incassati"
+        ];
 
-        // Prima Entrate
-        for (const parola of paroleEntrata) {
-             const regex = new RegExp(`\\b${parola}\\b`, 'i');
-             if (lowerText.match(regex)) { // Usa lowerText
-                newItem.type = "Entrata"; // <-- correzione: era tipo
-                matchedTypeKeyword = parola;
-                break;
-            }
-        }
-        // Poi Spese (se non già Entrata)
-        if (newItem.type === "Non definito") { // <-- correzione: era tipo
+        // --- LOGICA SPECIALE PER ACCONTO ---
+        if (/\bacconto\b/i.test(lowerText)) {
+            // Se c'è anche una parola di spesa, è spesa
             for (const parola of paroleSpesa) {
+                if (lowerText.includes(parola)) {
+                    newItem.type = "Spesa";
+                    matchedTypeKeyword = "acconto";
+                    break;
+                }
+            }
+            // Se non è già stato classificato come Spesa, cerca parole di entrata
+            if (newItem.type === "Non definito") {
+                for (const parola of paroleEntrata) {
+                    if (lowerText.includes(parola)) {
+                        newItem.type = "Entrata";
+                        matchedTypeKeyword = "acconto";
+                        break;
+                    }
+                }
+            }
+            // Se non trova altro, di default SPESA
+            if (newItem.type === "Non definito") {
+                newItem.type = "Spesa";
+                matchedTypeKeyword = "acconto";
+            }
+        } else {
+            // --- LOGICA STANDARD ---
+            // Prima Entrate
+            for (const parola of paroleEntrata) {
                  const regex = new RegExp(`\\b${parola}\\b`, 'i');
-                 if (lowerText.match(regex)) { // Usa lowerText
-                    newItem.type = "Spesa"; // <-- correzione: era tipo
+                 if (lowerText.match(regex)) {
+                    newItem.type = "Entrata";
                     matchedTypeKeyword = parola;
                     break;
+                }
+            }
+            // Poi Spese (se non già Entrata)
+            if (newItem.type === "Non definito") {
+                for (const parola of paroleSpesa) {
+                     const regex = new RegExp(`\\b${parola}\\b`, 'i');
+                     if (lowerText.match(regex)) {
+                        newItem.type = "Spesa";
+                        matchedTypeKeyword = parola;
+                        break;
+                    }
                 }
             }
         }
