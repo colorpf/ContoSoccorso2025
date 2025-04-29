@@ -52,12 +52,26 @@ document.addEventListener('DOMContentLoaded', () => {
     // Funzione per aggiungere una riga alla tabella (ordine: Data, Categoria, Tipo, Importo, Descrizione, Elimina)
     function addRowToTable(item, rowIndex = 0) {
         const row = recordedDataTableBody.insertRow(rowIndex);
-        row.insertCell().textContent = item.data || '';
-        row.insertCell().textContent = item.categoria || '';
-        row.insertCell().textContent = item.tipo || '';
-        row.insertCell().textContent = item.importo || '';
-        row.insertCell().textContent = item.descrizione || '';
-        // Colonna Elimina
+
+        if (item.type === 'NICHOLAS_ENTRY') {
+            // Nicholas: Data, Categoria (fissa), Tipo, Importo (ore), Descrizione (cantiere + note)
+            row.insertCell().textContent = item.data || '';
+            row.insertCell().textContent = 'Lavoro Nicholas';
+            row.insertCell().textContent = item.type || '';
+            row.insertCell().textContent = item.ore ? `${item.ore} ore` : '';
+            let descrizione = item.cantiere || '';
+            if (item.note) descrizione += (descrizione ? ' - ' : '') + item.note;
+            row.insertCell().textContent = descrizione;
+        } else {
+            // Spesa/Entrata: Data, Categoria, Tipo, Importo, Descrizione
+            row.insertCell().textContent = item.data || '';
+            row.insertCell().textContent = item.categoria || '';
+            row.insertCell().textContent = item.type || '';
+            row.insertCell().textContent = item.importo || '';
+            row.insertCell().textContent = item.descrizione || '';
+        }
+
+        // Colonna Elimina (comune a tutti)
         const deleteCell = row.insertCell();
         const deleteBtn = document.createElement('button');
         deleteBtn.textContent = 'Elimina';
@@ -65,10 +79,9 @@ document.addEventListener('DOMContentLoaded', () => {
         deleteBtn.addEventListener('click', () => {
             if (confirm('Vuoi davvero eliminare questa riga?')) {
                 if (confirm('Conferma definitiva: eliminare questa riga?')) {
-                    // Trova l'indice reale della riga da eliminare
                     const realIndex = Array.from(recordedDataTableBody.rows).indexOf(row);
                     if (realIndex > -1) {
-                        currentData.splice(currentData.length - 1 - realIndex, 1); // Poiché inseriamo in cima
+                        currentData.splice(currentData.length - 1 - realIndex, 1);
                         saveData(currentData);
                         recordedDataTableBody.deleteRow(realIndex);
                         statusP.textContent = 'Riga eliminata.';
