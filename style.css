@@ -47,6 +47,51 @@ button.recording::before {
     font-size: 1em;
 } */
 
+.navy-btn {
+    background-color: #001f4d;
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    padding: 13px 22px;
+    font-size: 1.1em;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.navy-btn:hover {
+    background-color: #003366;
+}
+
+.orange-btn {
+    background-color: #f39c12;
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    padding: 13px 22px;
+    font-size: 1.1em;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.orange-btn:hover {
+    background-color: #d35400;
+}
+
+#startButton svg, #driveButton svg, #clearListButton svg {
+    vertical-align: middle;
+}
+
+#startButton:disabled {
+    background-color: #cccccc;
+    cursor: not-allowed;
+}
+
 #status {
     font-style: italic;
     color: #555;

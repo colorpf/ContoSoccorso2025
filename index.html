@@ -53,8 +53,21 @@
 
     <h1>Conto Soccorso 2025 - Registratore Spese Vocale</h1>
 
-    <button id="startButton">Avvia Registrazione</button>
-    
+    <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 18px;">
+        <button id="startButton" class="navy-btn">
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10" stroke="#001f4d" stroke-width="2.5" fill="#001f4d"/><rect x="9" y="7" width="6" height="10" rx="3" fill="white"/><circle cx="12" cy="17" r="1.5" fill="#001f4d"/></svg>
+            <span style="margin-left:7px;">Rec</span>
+        </button>
+        <button id="driveButton" class="navy-btn" onclick="window.open('https://drive.google.com/drive/my-drive', '_blank')">
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 48 48"><polygon fill="#4285F4" points="25.5,8.7 34.1,23.5 42.7,38.3 34.1,38.3 25.5,23.5 16.9,8.7"/><polygon fill="#34A853" points="5.3,38.3 16.9,38.3 25.5,23.5 13.9,23.5"/><polygon fill="#FBBC05" points="25.5,8.7 16.9,23.5 25.5,23.5 34.1,8.7"/><polygon fill="#EA4335" points="42.7,38.3 34.1,23.5 25.5,23.5 34.1,38.3"/></svg>
+            <span style="margin-left:7px;">Apri Drive</span>
+        </button>
+        <button id="clearListButton" class="orange-btn">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
+            <span style="margin-left:7px;">Cancella</span>
+        </button>
+    </div>
+
     <h2>Stato</h2>
     <p id="status">Pronto per iniziare...</p>
 
@@ -63,9 +76,6 @@
 
     <h2>Dati Estratti (JSON)</h2>
     <pre id="parsedData">...</pre>
-
-    <!-- Pulsante per svuotare la lista -->
-    <button id="clearListButton">Svuota Lista</button>
 
     <h2>Lista Dati Registrati</h2>
     <table id="recordedDataTable">
