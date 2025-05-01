@@ -12,7 +12,7 @@ button {
     padding: 15px 25px;
     font-size: 1.2em;
     cursor: pointer;
-    background-color: #007bff;
+    background-color: #0056b3;
     color: white;
     border: none;
     border-radius: 5px;
@@ -20,7 +20,7 @@ button {
 }
 
 button:hover {
-    background-color: #0056b3;
+    background-color: #003366;
 }
 
 button:disabled {
@@ -48,7 +48,7 @@ button.recording::before {
 } */
 
 .navy-btn {
-    background-color: #001f4d;
+    background-color: #0056b3;
     color: #fff;
     border: none;
     border-radius: 5px;
