@@ -1,7 +1,7 @@
 body {
     font-family: sans-serif;
     padding: 20px;
-    background-color: #f4f4f4;
+    background-color: #001f4d; /* Blu navy come il logo */
 }
 
 h1, h2 {
@@ -12,7 +12,7 @@ button {
     padding: 15px 25px;
     font-size: 1.2em;
     cursor: pointer;
-    background-color: #0056b3;
+    background-color: #001f4d; /* Blu navy coerente con il logo */
     color: white;
     border: none;
     border-radius: 5px;
@@ -48,7 +48,7 @@ button.recording::before {
 } */
 
 .navy-btn {
-    background-color: #0056b3;
+    background-color: #001f4d;
     color: #fff;
     border: none;
     border-radius: 5px;
