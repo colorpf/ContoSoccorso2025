@@ -1,7 +1,7 @@
 body {
     font-family: sans-serif;
     padding: 20px;
-    background-color: #001f4d; /* Blu navy come il logo */
+    background-color: #f4f4f4; /* Ripristina il background chiaro originale */
 }
 
 h1, h2 {
