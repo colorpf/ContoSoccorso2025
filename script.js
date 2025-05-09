@@ -88,7 +88,19 @@ document.addEventListener('DOMContentLoaded', () => {
             statusDiv.textContent = 'Testo estratto! Prova di interpretazione...';
             
             const scontrinoData = parseScontrinoText(text);
-            parsedDataDiv.textContent = JSON.stringify(scontrinoData, null, 2);
+            // parsedDataDiv.textContent = JSON.stringify(scontrinoData, null, 2); // Vecchia visualizzazione JSON
+            if (scontrinoData) {
+                const displayItems = [
+                    `Tipo: ${scontrinoData.type}`,
+                    `Data: ${scontrinoData.data}`,
+                    `Importo: ${scontrinoData.importo}`,
+                    `Categoria: ${scontrinoData.categoria}`,
+                    `Descrizione: ${scontrinoData.descrizione}`
+                ];
+                parsedDataDiv.textContent = displayItems.join('\n');
+            } else {
+                parsedDataDiv.textContent = "Impossibile estrarre dati strutturati dallo scontrino.";
+            }
 
             if (scontrinoData && scontrinoData.type !== "Non definito" && scontrinoData.importo !== "0.00") {
                 currentData.push(scontrinoData);
@@ -115,7 +127,7 @@ document.addEventListener('DOMContentLoaded', () => {
             data: new Date().toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' }),
             importo: "0.00",
             categoria: "Scontrino",
-            descrizione: "Acquisto da scontrino"
+            descrizione: "Acquisto da scontrino" // Default
         };
 
         // Regex migliorate e più specifiche per l'italiano
@@ -133,17 +145,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 newItem.importo = importoMatch[1].replace(/\./g, '').replace(',', '.');
                 newItem.type = "Spesa";
             } else {
-                // Cerca tutti i possibili importi e prende l'ultimo (spesso il totale) o il più grande
                 const possibiliImporti = [...text.matchAll(importoRegexSemplice)];
                 if (possibiliImporti.length > 0) {
-                    // Prende l'ultimo trovato, che è spesso il totale
                     newItem.importo = possibiliImporti[possibiliImporti.length - 1][1].replace(',', '.');
                     newItem.type = "Spesa";
                 }
             }
         }
         
-        // Regex per la data (GG/MM/AAAA o GG-MM-AAAA o GG.MM.AAAA)
         const dataMatch = text.match(/(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})/);
         if (dataMatch) {
             let dataString = dataMatch[1].replace(/[\-.]/g, '/');
@@ -152,26 +161,50 @@ document.addEventListener('DOMContentLoaded', () => {
                 let day = parts[0].padStart(2, '0');
                 let month = parts[1].padStart(2, '0');
                 let year = parts[2];
-                if (year.length === 2) year = "20" + year; // Assumiamo anni 20xx
+                if (year.length === 2) year = "20" + year; 
                 newItem.data = `${day}/${month}/${year}`;
             }
         }
 
-        // Esempio per categoria (molto dipendente dal contenuto dello scontrino)
-        if (text.match(/SUPERMERCATO|ALIMENTARI|CONAD|ESSELUNGA/i)) {
+        if (text.match(/SUPERMERCATO|ALIMENTARI|CONAD|ESSELUNGA|LIDL/i)) {
             newItem.categoria = "Spesa Alimentare";
-        } else if (text.match(/RISTORANTE|PIZZERIA|BAR|CAFFÈ/i)) {
+        } else if (text.match(/RISTORANTE|PIZZERIA|BAR|CAFFÈ|MCDONALD/i)) {
             newItem.categoria = "Pasti Fuori";
         } else if (text.match(/FARMACIA|MEDICINALI/i)) {
             newItem.categoria = "Salute";
+        } else if (text.match(/BRICOMAN|TECNOMAT|LEROY MERLIN|BRICO/i)) {
+            newItem.categoria = "Fai da te";
         }
 
-        // Descrizione: prime righe o nome negozio se identificabile
-        const primeRighe = text.split('\n').slice(0, 3).join(' ').trim(); // Prende le prime 3 righe
-        newItem.descrizione = primeRighe.substring(0, 100) + (primeRighe.length > 100 ? "..." : "");
-        if (newItem.descrizione.length < 10 && text.length > 0) { // Fallback se le prime righe sono vuote
-             newItem.descrizione = text.substring(0,100) + "...";
+
+        // Descrizione: tentativo di estrarre una riga più significativa (es. nome negozio)
+        const textLines = text.split('\n');
+        let potentialDescription = "";
+        for (let i = 0; i < Math.min(textLines.length, 6); i++) { // Controlla le prime 6 righe
+            const cleanedLine = textLines[i].replace(/\s+/g, ' ').trim();
+            // Cerca una riga con un buon numero di caratteri alfabetici, non troppo corta, non un indirizzo o P.IVA
+            if (cleanedLine.length > 4 && cleanedLine.length < 50 &&
+                (cleanedLine.match(/[a-zA-Z]/g) || []).length >= cleanedLine.length * 0.4 && // Almeno 40% lettere
+                !cleanedLine.match(/VIA|PIAZZA|CORSO|P\.IVA|C\.F\.|TEL\.|CAP\s\d{5}/i) &&
+                !cleanedLine.match(/^\d[\d\s\.,\-:\/]*$/) && // Non solo numeri e simboli di data/ora/importo
+                !cleanedLine.toLowerCase().includes("scontrino") &&
+                !cleanedLine.toLowerCase().includes("documento n.") &&
+                !cleanedLine.toLowerCase().includes("totale")) {
+                potentialDescription = cleanedLine;
+                break; 
+            }
         }
+        
+        if (potentialDescription) {
+            newItem.descrizione = potentialDescription;
+        } else {
+            // Fallback se non si trova una descrizione migliore
+            const primeRighe = textLines.filter(l => l.trim().length > 3).slice(0, 2).join(' ').trim();
+            newItem.descrizione = primeRighe.substring(0, 50) || "Acquisto da scontrino";
+        }
+        // Pulisce ulteriormente la descrizione da caratteri strani iniziali o finali se non sono lettere/numeri
+        newItem.descrizione = newItem.descrizione.replace(/^[^a-zA-Z0-9À-ÿ]+|[^a-zA-Z0-9À-ÿ]+$/g, '').trim();
+        if (newItem.descrizione.length === 0) newItem.descrizione = "Scontrino";
 
 
         console.log("Dati estratti dallo scontrino (processati):", newItem);
