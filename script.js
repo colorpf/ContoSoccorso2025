@@ -14,7 +14,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Setup scontrinoInput for image capture (camera and file)
     if (scontrinoInput) {
         scontrinoInput.accept = 'image/*';      // Suggests to the browser to filter for image files
-        scontrinoInput.capture = 'environment'; // Prefers the rear-facing camera on mobile devices
                                                 // On desktop, or if no camera, it will still open a file picker.
     }
 
