@@ -13,7 +13,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Setup scontrinoInput for image capture (camera and file)
     if (scontrinoInput) {
-        // scontrinoInput.accept = 'image/*'; // TEMPORANEAMENTE RIMOSSO per testare il comportamento su mobile
+        scontrinoInput.accept = 'image/*'; // Ripristinato: specifica che vogliamo file immagine
+        // scontrinoInput.capture = 'environment'; // Mantenuto commentato: non forzare la fotocamera
                                                 // On desktop, or if no camera, it will still open a file picker.
     }
 
