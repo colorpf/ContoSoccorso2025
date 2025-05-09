@@ -11,6 +11,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const caricaScontrinoBtn = document.getElementById('caricaScontrinoBtn');
     const scontrinoInput = document.getElementById('scontrinoInput');
 
+    // Setup scontrinoInput for image capture (camera and file)
+    if (scontrinoInput) {
+        scontrinoInput.accept = 'image/*';      // Suggests to the browser to filter for image files
+        scontrinoInput.capture = 'environment'; // Prefers the rear-facing camera on mobile devices
+                                                // On desktop, or if no camera, it will still open a file picker.
+    }
+
     const currentYear = new Date().getFullYear();
     const storageKey = `recordedData_${currentYear}`;
     let currentData = loadData(); // Carica i dati esistenti
@@ -126,8 +133,8 @@ document.addEventListener('DOMContentLoaded', () => {
             type: "Non definito",
             data: new Date().toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' }),
             importo: "0.00",
-            categoria: "Scontrino",
-            descrizione: "Acquisto da scontrino" // Default
+            categoria: "Scontrino", // Default category
+            descrizione: "Scontrino" // Default description, will be updated
         };
 
         // Regex migliorate e più specifiche per l'italiano
@@ -166,46 +173,103 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        if (text.match(/SUPERMERCATO|ALIMENTARI|CONAD|ESSELUNGA|LIDL/i)) {
+        // --- NEW DESCRIPTION AND CATEGORY LOGIC ---
+        let specificStoreFound = false;
+
+        // Prioritize specific store names for description and category
+        if (text.match(/CONAD/i)) {
             newItem.categoria = "Spesa Alimentare";
-        } else if (text.match(/RISTORANTE|PIZZERIA|BAR|CAFFÈ|MCDONALD/i)) {
-            newItem.categoria = "Pasti Fuori";
-        } else if (text.match(/FARMACIA|MEDICINALI/i)) {
-            newItem.categoria = "Salute";
-        } else if (text.match(/BRICOMAN|TECNOMAT|LEROY MERLIN|BRICO/i)) {
+            newItem.descrizione = "CONAD";
+            specificStoreFound = true;
+        } else if (text.match(/ESSELUNGA/i)) {
+            newItem.categoria = "Spesa Alimentare";
+            newItem.descrizione = "ESSELUNGA";
+            specificStoreFound = true;
+        } else if (text.match(/LIDL/i)) {
+            newItem.categoria = "Spesa Alimentare";
+            newItem.descrizione = "LIDL";
+            specificStoreFound = true;
+        } else if (text.match(/TECNOMAT/i)) {
             newItem.categoria = "Fai da te";
+            newItem.descrizione = "TECNOMAT";
+            specificStoreFound = true;
+        } else if (text.match(/BRICOMAN/i)) {
+            newItem.categoria = "Fai da te";
+            newItem.descrizione = "BRICOMAN";
+            specificStoreFound = true;
+        } else if (text.match(/LEROY MERLIN/i)) {
+            newItem.categoria = "Fai da te";
+            newItem.descrizione = "Leroy Merlin";
+            specificStoreFound = true;
+        } else if (text.match(/MCDONALD'?S?/i)) { // Handles McDonald and McDonald's
+            newItem.categoria = "Pasti Fuori";
+            newItem.descrizione = "McDonald's";
+            specificStoreFound = true;
+        } // Add more specific stores here like: else if (text.match(/NOME_NEGOZIO/i)) { newItem.categoria = "Categoria"; newItem.descrizione = "NOME_NEGOZIO"; specificStoreFound = true; }
+
+
+        // If no specific store was found, try general categories and set a generic description
+        if (!specificStoreFound) {
+            if (text.match(/SUPERMERCATO|ALIMENTARI/i)) {
+                newItem.categoria = "Spesa Alimentare";
+                newItem.descrizione = "Supermercato";
+            } else if (text.match(/RISTORANTE/i)) {
+                newItem.categoria = "Pasti Fuori";
+                newItem.descrizione = "Ristorante";
+            } else if (text.match(/PIZZERIA/i)) {
+                newItem.categoria = "Pasti Fuori";
+                newItem.descrizione = "Pizzeria";
+            } else if (text.match(/BAR/i)) {
+                newItem.categoria = "Pasti Fuori";
+                newItem.descrizione = "Bar";
+            } else if (text.match(/CAFFÈ/i)) { 
+                newItem.categoria = "Pasti Fuori";
+                newItem.descrizione = "Caffè";
+            } else if (text.match(/FARMACIA/i)) {
+                newItem.categoria = "Salute";
+                newItem.descrizione = "Farmacia";
+            } else if (text.match(/MEDICINALI/i) && newItem.categoria === "Scontrino") { // Avoid overriding if Farmacia already matched
+                newItem.categoria = "Salute";
+                newItem.descrizione = "Prodotti Salute";
+            } else if (text.match(/BRICO/i) && newItem.categoria === "Scontrino") { // Avoid overriding if Tecnoma/Bricoman etc. matched
+                newItem.categoria = "Fai da te";
+                newItem.descrizione = "Brico";
+            }
         }
 
-
-        // Descrizione: tentativo di estrarre una riga più significativa (es. nome negozio)
-        const textLines = text.split('\n');
-        let potentialDescription = "";
-        for (let i = 0; i < Math.min(textLines.length, 6); i++) { // Controlla le prime 6 righe
-            const cleanedLine = textLines[i].replace(/\s+/g, ' ').trim();
-            // Cerca una riga con un buon numero di caratteri alfabetici, non troppo corta, non un indirizzo o P.IVA
-            if (cleanedLine.length > 4 && cleanedLine.length < 50 &&
-                (cleanedLine.match(/[a-zA-Z]/g) || []).length >= cleanedLine.length * 0.4 && // Almeno 40% lettere
-                !cleanedLine.match(/VIA|PIAZZA|CORSO|P\.IVA|C\.F\.|TEL\.|CAP\s\d{5}/i) &&
-                !cleanedLine.match(/^\d[\d\s\.,\-:\/]*$/) && // Non solo numeri e simboli di data/ora/importo
-                !cleanedLine.toLowerCase().includes("scontrino") &&
-                !cleanedLine.toLowerCase().includes("documento n.") &&
-                !cleanedLine.toLowerCase().includes("totale")) {
-                potentialDescription = cleanedLine;
-                break; 
+        // Fallback: If description is still the default "Scontrino" and category is also "Scontrino",
+        // try the original advanced parsing logic to find a more descriptive line.
+        if (newItem.descrizione === "Scontrino" && newItem.categoria === "Scontrino") {
+            const textLines = text.split('\n');
+            let potentialDescription = "";
+            for (let i = 0; i < Math.min(textLines.length, 6); i++) {
+                const cleanedLine = textLines[i].replace(/\s+/g, ' ').trim();
+                if (cleanedLine.length > 4 && cleanedLine.length < 50 &&
+                    (cleanedLine.match(/[a-zA-Z]/g) || []).length >= cleanedLine.length * 0.4 &&
+                    !cleanedLine.match(/VIA|PIAZZA|CORSO|P\.IVA|C\.F\.|TEL\.|CAP\s\d{5}/i) &&
+                    !cleanedLine.match(/^\d[\d\s\.,\-:\/]*$/) && 
+                    !cleanedLine.toLowerCase().includes("scontrino") &&
+                    !cleanedLine.toLowerCase().includes("documento n.") &&
+                    !cleanedLine.toLowerCase().includes("totale")) {
+                    potentialDescription = cleanedLine;
+                    break; 
+                }
+            }
+            
+            if (potentialDescription) {
+                newItem.descrizione = potentialDescription;
+            } else {
+                const primeRighe = textLines.filter(l => l.trim().length > 3).slice(0, 2).join(' ').trim();
+                newItem.descrizione = primeRighe.substring(0, 50) || "Scontrino"; // Default to "Scontrino" if empty
             }
         }
         
-        if (potentialDescription) {
-            newItem.descrizione = potentialDescription;
-        } else {
-            // Fallback se non si trova una descrizione migliore
-            const primeRighe = textLines.filter(l => l.trim().length > 3).slice(0, 2).join(' ').trim();
-            newItem.descrizione = primeRighe.substring(0, 50) || "Acquisto da scontrino";
-        }
-        // Pulisce ulteriormente la descrizione da caratteri strani iniziali o finali se non sono lettere/numeri
+        // Final cleanup for description
         newItem.descrizione = newItem.descrizione.replace(/^[^a-zA-Z0-9À-ÿ]+|[^a-zA-Z0-9À-ÿ]+$/g, '').trim();
-        if (newItem.descrizione.length === 0) newItem.descrizione = "Scontrino";
-
+        if (newItem.descrizione.length === 0) {
+            newItem.descrizione = "Scontrino"; // Ensure description is not empty
+        }
+        // --- END NEW DESCRIPTION AND CATEGORY LOGIC ---
 
         console.log("Dati estratti dallo scontrino (processati):", newItem);
         return newItem;
