@@ -137,28 +137,89 @@ document.addEventListener('DOMContentLoaded', () => {
             descrizione: "Scontrino" // Default description, will be updated
         };
 
-        // Regex migliorate e più specifiche per l'italiano
-        const importoRegexEuropea = /(\b(?:TOTALE|IMPORTO|PAGATO)\b\s*(?:EUR|€)?\s*)(\d{1,3}(?:\.\d{3})*,\d{2})\b/i;
-        const importoRegexGenerica = /(?:EUR|€)\s*(\d{1,3}(?:\.\d{3})*,\d{2})\b/i;
-        const importoRegexSemplice = /(\d+,\d{2})/g; // Cerca qualsiasi numero con due decimali separati da virgola
+        // --- INIZIO LOGICA IMPORTI MIGLIORATA ---
+        let amounts = [];
 
-        let importoMatch = text.match(importoRegexEuropea);
-        if (importoMatch) {
-            newItem.importo = importoMatch[2].replace(/\./g, '').replace(',', '.'); // Rimuove i punti delle migliaia, converte la virgola
-            newItem.type = "Spesa";
-        } else {
-            importoMatch = text.match(importoRegexGenerica);
-            if (importoMatch) {
-                newItem.importo = importoMatch[1].replace(/\./g, '').replace(',', '.');
-                newItem.type = "Spesa";
-            } else {
-                const possibiliImporti = [...text.matchAll(importoRegexSemplice)];
-                if (possibiliImporti.length > 0) {
-                    newItem.importo = possibiliImporti[possibiliImporti.length - 1][1].replace(',', '.');
-                    newItem.type = "Spesa";
-                }
+        // Funzione per normalizzare e convertire in numero una stringa di importo (es. "1.234,50" o "1234.50")
+        const parseValueToFloat = (valStr) => {
+            if (!valStr) return 0;
+            // Rimuove i punti delle migliaia (es. 1.234,50 -> 1234,50)
+            // Sostituisce la virgola decimale con il punto (es. 1234,50 -> 1234.50)
+            const normalized = valStr.replace(/\.(?=\d{3})/g, '').replace(',', '.');
+            return parseFloat(normalized) || 0;
+        };
+
+        const lines = text.split('\n');
+        for (const line of lines) {
+            // Ignora righe che sono chiaramente di IVA, sconti, resto, o altre info non utili per il totale spesa
+            if (/IVA|IMPOSTA\sDI\sBOLLO|ALIQUOTA|SCONTO|RESTO|CREDITO|SUBTOTALE|RIEPILOGO\s+ALIQUOTE|BUONO|BUONI|TRONCARE|NON\s+RISCOSSO|NON\s+PAGATO/i.test(line)) {
+                continue;
+            }
+
+            let match;
+
+            // Priorità 1: Parole chiave molto forti per il totale
+            match = line.match(/(\b(?:TOTALE|IMPORTO\s+PAGATO|NETTO\s+A\s+PAGARE|TOTALE\s+EURO|TOTALE\s+EUR)[\sA-Z]*(?:EUR|€)?\s*)(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})\b/i);
+            if (match) {
+                amounts.push({ value: match[2], priority: 1, lineContext: line });
+                continue; // Trovato un totale forte su questa riga
+            }
+
+            // Priorità 2: Parole chiave comuni per pagamenti o importi
+            match = line.match(/(\b(?:PAGATO|IMPORTO|CORRISPETTIVO|CONTANTE|TOTALE\s+SCONTRINO)[\sA-Z]*(?:EUR|€)?\s*)(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})\b/i);
+            if (match) {
+                amounts.push({ value: match[2], priority: 2, lineContext: line });
+                continue;
+            }
+            
+            // Priorità 3: Simbolo € o EUR seguito da un importo
+            match = line.match(/((?:EUR|€)\s*)(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})\b/i);
+            if (match) {
+                amounts.push({ value: match[2], priority: 3, lineContext: line });
+                continue;
             }
         }
+        
+        // Priorità 4: Fallback - cerca importi generici su righe "pulite" se non trovato nulla prima
+        if (amounts.length === 0) {
+            let fallbackAmounts = [];
+            for (const line of lines.slice().reverse()) { // Itera dalle ultime righe
+                 if (/IVA|IMPOSTA\sDI\sBOLLO|ALIQUOTA|SCONTO|RESTO|CREDITO|SUBTOTALE|RIEPILOGO\s+ALIQUOTE|%|CODICE|ARTICOLO|TEL\.|P\.IVA|C\.F\.|SCONTRINO\s+N\.|DOC\.|OPERAZIONE\s+N\./i.test(line)) {
+                    continue;
+                }
+                const lineMatches = [...line.matchAll(/(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})\b/g)];
+                if (lineMatches.length > 0) {
+                    // Da questa riga "pulita", prendi l'ultimo importo trovato
+                    fallbackAmounts.push({ value: lineMatches[lineMatches.length -1][1], priority: 4, lineContext: line });
+                }
+            }
+            if (fallbackAmounts.length > 0) {
+                // Tra i candidati di fallback, preferisci quello con valore numerico più alto
+                fallbackAmounts.sort((a,b) => parseValueToFloat(b.value) - parseValueToFloat(a.value));
+                amounts.push(fallbackAmounts[0]); 
+            }
+        }
+
+        if (amounts.length > 0) {
+            // Ordina i candidati: prima per priorità (1 è la migliore), poi per valore (più alto è meglio)
+            amounts.sort((a, b) => {
+                if (a.priority !== b.priority) {
+                    return a.priority - b.priority;
+                }
+                return parseValueToFloat(b.value) - parseValueToFloat(a.value);
+            });
+            
+            console.log("Potential amounts found (sorted):", amounts);
+
+            let bestAmountStr = amounts[0].value;
+            // Normalizzazione finale: rimuovi punti delle migliaia, converti virgola decimale in punto.
+            newItem.importo = bestAmountStr.replace(/\.(?=\d{3})/g, '').replace(',', '.');
+            newItem.type = "Spesa";
+        } else {
+             console.log("No reliable amount found with new logic. Check OCR text.");
+             // Se non trova nulla, l'importo rimane "0.00" come da inizializzazione
+        }
+        // --- FINE LOGICA IMPORTI MIGLIORATA ---
         
         const dataMatch = text.match(/(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})/);
         if (dataMatch) {
