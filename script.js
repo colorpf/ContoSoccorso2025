@@ -139,34 +139,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // --- INIZIO LOGICA IMPORTI MIGLIORATA ---
         let amounts = [];
-
-        // Funzione per normalizzare e convertire in numero una stringa di importo (es. "1.234,50" o "1234.50")
+        
         const parseValueToFloat = (valStr) => {
             if (!valStr) return 0;
-            // Rimuove i punti delle migliaia (es. 1.234,50 -> 1234,50)
-            // Sostituisce la virgola decimale con il punto (es. 1234,50 -> 1234.50)
             const normalized = valStr.replace(/\.(?=\d{3})/g, '').replace(',', '.');
             return parseFloat(normalized) || 0;
         };
 
         const lines = text.split('\n');
         for (const line of lines) {
-            // Ignora righe che sono chiaramente di IVA, sconti, resto, o altre info non utili per il totale spesa
             if (/IVA|IMPOSTA\sDI\sBOLLO|ALIQUOTA|SCONTO|RESTO|CREDITO|SUBTOTALE|RIEPILOGO\s+ALIQUOTE|BUONO|BUONI|TRONCARE|NON\s+RISCOSSO|NON\s+PAGATO/i.test(line)) {
                 continue;
             }
 
             let match;
 
-            // Priorità 1: Parole chiave molto forti per il totale
-            match = line.match(/(\b(?:TOTALE|IMPORTO\s+PAGATO|NETTO\s+A\s+PAGARE|TOTALE\s+EURO|TOTALE\s+EUR)[\sA-Z]*(?:EUR|€)?\s*)(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})\b/i);
+            // Priorità 1: Parole chiave molto forti per il totale (RIMOSSO \010)
+            match = line.match(/(\b(?:TOTALE|IMPORTO\s+PAGATO|NETTO\s+A\s+PAGARE|TOTALE\s+EURO|TOTALE\s+EUR)[\sA-Z]*(?:EUR|€)?\s*)(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})\b/i);
             if (match) {
                 amounts.push({ value: match[2], priority: 1, lineContext: line });
-                continue; // Trovato un totale forte su questa riga
+                continue; 
             }
 
-            // Priorità 2: Parole chiave comuni per pagamenti o importi
-            match = line.match(/(\b(?:PAGATO|IMPORTO|CORRISPETTIVO|CONTANTE|TOTALE\s+SCONTRINO)[\sA-Z]*(?:EUR|€)?\s*)(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})\b/i);
+            // Priorità 2: Parole chiave comuni per pagamenti o importi (RIMOSSO \010)
+            match = line.match(/(\b(?:PAGATO|IMPORTO|CORRISPETTIVO|CONTANTE|TOTALE\s+SCONTRINO|PAGAMENTO)[\sA-Z]*(?:EUR|€)?\s*)(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})\b/i);
             if (match) {
                 amounts.push({ value: match[2], priority: 2, lineContext: line });
                 continue;
@@ -175,33 +171,35 @@ document.addEventListener('DOMContentLoaded', () => {
             // Priorità 3: Simbolo € o EUR seguito da un importo
             match = line.match(/((?:EUR|€)\s*)(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})\b/i);
             if (match) {
+                // Evita di catturare importi che sono chiaramente parte di date o codici se il simbolo € è ambiguo
+                if (line.match(/\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}/) && line.indexOf(match[2]) > line.match(/\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}/)[0].length + line.match(/\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}/).index && !line.match(/TOTALE|IMPORTO|PAGATO/i) ) {
+                    // Probabilmente un importo dopo una data, es. "€DD-MM-YYYY IMPORTO" -> OK
+                    // Ma se è "€NUMERO-CHE-FA-PARTE-DI-UN-CODICE IMPORTO", potrebbe essere rischioso.
+                    // Per ora, si accetta se non ci sono parole chiave di pagamento più forti.
+                }
                 amounts.push({ value: match[2], priority: 3, lineContext: line });
                 continue;
             }
         }
         
-        // Priorità 4: Fallback - cerca importi generici su righe "pulite" se non trovato nulla prima
         if (amounts.length === 0) {
             let fallbackAmounts = [];
-            for (const line of lines.slice().reverse()) { // Itera dalle ultime righe
+            for (const line of lines.slice().reverse()) { 
                  if (/IVA|IMPOSTA\sDI\sBOLLO|ALIQUOTA|SCONTO|RESTO|CREDITO|SUBTOTALE|RIEPILOGO\s+ALIQUOTE|%|CODICE|ARTICOLO|TEL\.|P\.IVA|C\.F\.|SCONTRINO\s+N\.|DOC\.|OPERAZIONE\s+N\./i.test(line)) {
                     continue;
                 }
                 const lineMatches = [...line.matchAll(/(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})\b/g)];
                 if (lineMatches.length > 0) {
-                    // Da questa riga "pulita", prendi l'ultimo importo trovato
                     fallbackAmounts.push({ value: lineMatches[lineMatches.length -1][1], priority: 4, lineContext: line });
                 }
             }
             if (fallbackAmounts.length > 0) {
-                // Tra i candidati di fallback, preferisci quello con valore numerico più alto
                 fallbackAmounts.sort((a,b) => parseValueToFloat(b.value) - parseValueToFloat(a.value));
                 amounts.push(fallbackAmounts[0]); 
             }
         }
 
         if (amounts.length > 0) {
-            // Ordina i candidati: prima per priorità (1 è la migliore), poi per valore (più alto è meglio)
             amounts.sort((a, b) => {
                 if (a.priority !== b.priority) {
                     return a.priority - b.priority;
@@ -212,12 +210,10 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log("Potential amounts found (sorted):", amounts);
 
             let bestAmountStr = amounts[0].value;
-            // Normalizzazione finale: rimuovi punti delle migliaia, converti virgola decimale in punto.
             newItem.importo = bestAmountStr.replace(/\.(?=\d{3})/g, '').replace(',', '.');
             newItem.type = "Spesa";
         } else {
              console.log("No reliable amount found with new logic. Check OCR text.");
-             // Se non trova nulla, l'importo rimane "0.00" come da inizializzazione
         }
         // --- FINE LOGICA IMPORTI MIGLIORATA ---
         
@@ -250,26 +246,30 @@ document.addEventListener('DOMContentLoaded', () => {
             newItem.categoria = "Spesa Alimentare";
             newItem.descrizione = "LIDL";
             specificStoreFound = true;
-        } else if (text.match(/TECNOMAT/i)) {
+        } else if (text.match(/\bBRICO\b/i) && !text.match(/BRICOMAN|LEROY MERLIN|BRICOCENTER/i)) { 
             newItem.categoria = "Fai da te";
-            newItem.descrizione = "TECNOMAT";
+            newItem.descrizione = "Brico"; 
             specificStoreFound = true;
-        } else if (text.match(/BRICOMAN/i)) {
+        } else if (text.match(/TECNOMAT|BRICOMAN/i)) { 
             newItem.categoria = "Fai da te";
-            newItem.descrizione = "BRICOMAN";
+            newItem.descrizione = text.match(/TECNOMAT/i) ? "TECNOMAT" : "BRICOMAN";
             specificStoreFound = true;
         } else if (text.match(/LEROY MERLIN/i)) {
             newItem.categoria = "Fai da te";
             newItem.descrizione = "Leroy Merlin";
             specificStoreFound = true;
-        } else if (text.match(/MCDONALD'?S?/i)) { // Handles McDonald and McDonald's
+        } else if (text.match(/BRICOCENTER/i)) { 
+            newItem.categoria = "Fai da te";
+            newItem.descrizione = "Bricocenter";
+            specificStoreFound = true;
+        } else if (text.match(/MCDONALD'?S?/i)) { 
             newItem.categoria = "Pasti Fuori";
             newItem.descrizione = "McDonald's";
             specificStoreFound = true;
-        } // Add more specific stores here like: else if (text.match(/NOME_NEGOZIO/i)) { newItem.categoria = "Categoria"; newItem.descrizione = "NOME_NEGOZIO"; specificStoreFound = true; }
+        } // Add more specific stores here
 
 
-        // If no specific store was found, try general categories and set a generic description
+        // If no specific store was found, try general categories
         if (!specificStoreFound) {
             if (text.match(/SUPERMERCATO|ALIMENTARI/i)) {
                 newItem.categoria = "Spesa Alimentare";
@@ -280,22 +280,20 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (text.match(/PIZZERIA/i)) {
                 newItem.categoria = "Pasti Fuori";
                 newItem.descrizione = "Pizzeria";
-            } else if (text.match(/BAR/i)) {
+            } else if (text.match(/\bBAR\b/i) && !text.match(/BARCODE/i)) { // Check for whole word BAR and not in BARCODE
                 newItem.categoria = "Pasti Fuori";
                 newItem.descrizione = "Bar";
-            } else if (text.match(/CAFFÈ/i)) { 
+            } else if (text.match(/CAFFÈ|CAFFETTERIA/i)) { 
                 newItem.categoria = "Pasti Fuori";
-                newItem.descrizione = "Caffè";
+                newItem.descrizione = text.match(/CAFFETTERIA/i) ? "Caffetteria" : "Caffè";
             } else if (text.match(/FARMACIA/i)) {
                 newItem.categoria = "Salute";
                 newItem.descrizione = "Farmacia";
-            } else if (text.match(/MEDICINALI/i) && newItem.categoria === "Scontrino") { // Avoid overriding if Farmacia already matched
+            } else if (text.match(/MEDICINALI|PRODOTTI SANITARI/i) ) { 
                 newItem.categoria = "Salute";
                 newItem.descrizione = "Prodotti Salute";
-            } else if (text.match(/BRICO/i) && newItem.categoria === "Scontrino") { // Avoid overriding if Tecnoma/Bricoman etc. matched
-                newItem.categoria = "Fai da te";
-                newItem.descrizione = "Brico";
-            }
+            } 
+            // Removed the old generic Brico rule as it's now more specific
         }
 
         // Fallback: If description is still the default "Scontrino" and category is also "Scontrino",
