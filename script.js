@@ -182,10 +182,14 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         
+        // Priorità 4: Fallback - cerca importi generici su righe "pulite" se non trovato nulla prima
         if (amounts.length === 0) {
             let fallbackAmounts = [];
-            for (const line of lines.slice().reverse()) { 
-                 if (/IVA|IMPOSTA\sDI\sBOLLO|ALIQUOTA|SCONTO|RESTO|CREDITO|SUBTOTALE|RIEPILOGO\s+ALIQUOTE|%|CODICE|ARTICOLO|TEL\.|P\.IVA|C\.F\.|SCONTRINO\s+N\.|DOC\.|OPERAZIONE\s+N\./i.test(line)) {
+            // Riduciamo le parole chiave di esclusione per il fallback
+            const fallbackExclusionRegex = /IVA|ALIQUOTA|SCONTO|RESTO|SUBTOTALE|CREDITO|RIEPILOGO\s+ALIQUOTE|NON\s+RISCOSSO|NON\s+PAGATO|TRONCARE/i;
+            
+            for (const line of lines.slice().reverse()) { // Itera dalle ultime righe
+                 if (fallbackExclusionRegex.test(line)) { // Usa la nuova regex di esclusione
                     continue;
                 }
                 const lineMatches = [...line.matchAll(/(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})\b/g)];
@@ -198,6 +202,35 @@ document.addEventListener('DOMContentLoaded', () => {
                 amounts.push(fallbackAmounts[0]); 
             }
         }
+
+        // NUOVA FASE DI FALLBACK (Priorità 5) se ancora nessun importo
+        if (amounts.length === 0) {
+            console.log("Fallback priorità 4 non ha trovato importi, si tenta priorità 5.");
+            let veryFallbackAmounts = [];
+            const veryFallbackExclusionRegex = /RESTO|TRONCARE|NON\s+RISCOSSO|NON\s+PAGATO/i; // Pochissime esclusioni
+            const lastNLines = 7; // Considera le ultime 7 righe
+
+            for (const line of lines.slice(-lastNLines).reverse()) {
+                if (veryFallbackExclusionRegex.test(line)) {
+                    continue;
+                }
+                const lineMatches = [...line.matchAll(/(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})\b/g)];
+                if (lineMatches.length > 0) {
+                    // Prendi tutti gli importi validi su questa riga
+                    for (const match of lineMatches) {
+                        veryFallbackAmounts.push({ value: match[1], priority: 5, lineContext: line });
+                    }
+                }
+            }
+
+            if (veryFallbackAmounts.length > 0) {
+                // Tra tutti i candidati di questo fallback estremo, prendi quello con valore numerico più alto
+                veryFallbackAmounts.sort((a,b) => parseValueToFloat(b.value) - parseValueToFloat(a.value));
+                amounts.push(veryFallbackAmounts[0]);
+                console.log("Fallback priorità 5 ha trovato un importo:", veryFallbackAmounts[0]);
+            }
+        }
+
 
         if (amounts.length > 0) {
             amounts.sort((a, b) => {
