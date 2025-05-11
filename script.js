@@ -128,7 +128,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function parseScontrinoText(text) {
-        console.log("Testo da analizzare (scontrino):\n", text); // Corretto \\n in \n
+        console.log("Testo da analizzare (scontrino):\n", text);
         let newItem = {
             type: "Non definito",
             data: new Date().toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' }),
@@ -147,62 +147,60 @@ document.addEventListener('DOMContentLoaded', () => {
             return parseFloat(normalized) || 0;
         };
 
-        const lines = text.split('\n'); // Corretto \\n in \n
+        const lines = text.split('\n');
         const potentialTotalsKeywords = [
-            // Corretto \\b in \b e \\s in \s nelle regex
             { keyword: /(?:\bTOTALE\b|\bIMPORTO\s+PAGATO\b|\bNETTO\s+A\s+PAGARE\b|\bTOTALE\s+EURO\b|\bTOTALE\s+EUR\b|CONTANTE\s*EURO)/i, priority: 1 },
             { keyword: /(?:\bPAGATO\b|\bIMPORTO\b|\bCORRISPETTIVO\b|\bCONTANTE\b|\bTOTALE\s+SCONTRINO\b|\bPAGAMENTO\b|TOTALE\sGENERALE)/i, priority: 2 }
         ];
-        // Corretto \\d in \d, \. in \. \, in , e \\b in \b
-        const amountRegex = /(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})\b/g; 
-        // Corretto \\b in \b, \\s in \s, \\d in \d
-        const vatExclusionRegex = /\b(?:IVA|ALIQUOTA|IMPOSTA|VAT|TAX|%)[-\sA-ZÀ-ÿ0-9]*\b/i; // Modificata leggermente per essere più generale e robusta
-        // Corretto \\s in \s, \\. in \.
+        const amountRegex = /(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})\b/g;
+        const vatExclusionRegex = /\b(?:IVA|ALIQUOTA|IMPOSTA|VAT|TAX|%)/i; // Semplificata per testare solo la parola chiave IVA/percento
         const generalExclusionKeywords = /SCONTO|RESTO|CREDITO|SUBTOTALE|RIEPILOGO\s+ALIQUOTE|BUONO|TRONCARE|NON\s+RISCOSSO|NON\s+PAGATO|CODICE|ARTICOLO|TEL\.|\bP\.IVA\b|\bC\.F\b\.|SCONTRINO\s+N\.|\bDOC\b\.|OPERAZIONE\s+N\./i;
-
 
         for (const line of lines) {
             const trimmedLine = line.trim();
             if (!trimmedLine) continue;
 
-            let isLikelyVatOrIrrelevant = vatExclusionRegex.test(trimmedLine) || generalExclusionKeywords.test(trimmedLine);
-            let hasStrongTotalKeyword = potentialTotalsKeywords.some(ptk => ptk.priority === 1 && ptk.keyword.test(trimmedLine));
+            let lineAmounts = [];
+            let matchAm; 
+            amountRegex.lastIndex = 0;
+            while ((matchAm = amountRegex.exec(trimmedLine)) !== null) {
+                lineAmounts.push(matchAm[1]);
+            }
 
-            // Se la riga contiene una parola chiave forte per il totale, non la scartare solo per parole chiave generali o IVA.
-            if (isLikelyVatOrIrrelevant && !hasStrongTotalKeyword) {
-                // Se contiene IVA ma ANCHE una parola chiave forte (es. "TOTALE IVA INCLUSA"), non scartarla qui.
-                // La condizione sopra già gestisce questo, ma rendiamo il log più chiaro.
-                if (vatExclusionRegex.test(trimmedLine) && !hasStrongTotalKeyword) {
-                     console.log(`Skipping line due to VAT/percentage (and no strong total keyword): "${trimmedLine}"`);
-                } else if (generalExclusionKeywords.test(trimmedLine) && !hasStrongTotalKeyword) {
-                    console.log(`Skipping line due to general exclusion keywords (and no strong total keyword): "${trimmedLine}"`);
-                }
+            if (lineAmounts.length === 0) { 
                 continue;
             }
+            
+            console.log(`Processing line with amounts: "${trimmedLine}"`, lineAmounts);
 
-            let lineAmounts = [];
-            let match;
-            amountRegex.lastIndex = 0; 
-            while ((match = amountRegex.exec(trimmedLine)) !== null) {
-                lineAmounts.push(match[1]);
-            }
+            const p1KeywordMatch = potentialTotalsKeywords.find(ptk => ptk.priority === 1 && ptk.keyword.test(trimmedLine));
+            const p2KeywordMatch = potentialTotalsKeywords.find(ptk => ptk.priority === 2 && ptk.keyword.test(trimmedLine));
+            
+            const isVatLine = vatExclusionRegex.test(trimmedLine);
+            const isGenerallyExcludedLine = generalExclusionKeywords.test(trimmedLine);
 
-            if (lineAmounts.length > 0) {
-                let keywordFoundOnLine = false;
-                for (const ptk of potentialTotalsKeywords) {
-                    if (ptk.keyword.test(trimmedLine)) {
-                        amounts.push({ value: lineAmounts[lineAmounts.length - 1], priority: ptk.priority, lineContext: trimmedLine, reason: `Keyword: ${ptk.keyword.source}` });
-                        keywordFoundOnLine = true;
-                        break; 
-                    }
+            console.log(`Line: "${trimmedLine}" -> P1 Keyword: ${p1KeywordMatch ? p1KeywordMatch.keyword.source : 'none'}, P2 Keyword: ${p2KeywordMatch ? p2KeywordMatch.keyword.source : 'none'}, Is VAT: ${isVatLine}, Is GenExcluded: ${isGenerallyExcludedLine}`);
+
+            if (p1KeywordMatch) {
+                amounts.push({ value: lineAmounts[lineAmounts.length - 1], priority: 1, lineContext: trimmedLine, reason: `Keyword P1: ${p1KeywordMatch.keyword.source}` });
+                console.log(`Added P1 amount: ${lineAmounts[lineAmounts.length - 1]} from line "${trimmedLine}"`);
+            } else if (p2KeywordMatch) {
+                // Evita di prendere da righe IVA a meno che la parola chiave P2 non sia forte (es. PAGATO, TOTALE)
+                if (isVatLine && !p2KeywordMatch.keyword.source.match(/PAGATO|TOTALE|IMPORTO/i)) { 
+                    console.log(`Skipping P2 on VAT line (keyword not PAGATO/TOTALE/IMPORTO): "${trimmedLine}"`);
+                } else {
+                    amounts.push({ value: lineAmounts[lineAmounts.length - 1], priority: 2, lineContext: trimmedLine, reason: `Keyword P2: ${p2KeywordMatch.keyword.source}` });
+                    console.log(`Added P2 amount: ${lineAmounts[lineAmounts.length - 1]} from line "${trimmedLine}"`);
                 }
-                if (!keywordFoundOnLine) {
-                    // Solo se non è una riga IVA/esclusa O se ha una parola chiave forte (già gestito sopra, ma per sicurezza)
-                    if (!isLikelyVatOrIrrelevant || hasStrongTotalKeyword) {
-                        for (const la of lineAmounts) {
-                            amounts.push({ value: la, priority: 3, lineContext: trimmedLine, reason: "Generic amount on non-excluded/strong keyword line" });
-                        }
+            } else {
+                // Priorità 3: riga senza keyword P1/P2, e non è una riga IVA o generalmente esclusa
+                if (!isVatLine && !isGenerallyExcludedLine) {
+                    for (const la of lineAmounts) { 
+                        amounts.push({ value: la, priority: 3, lineContext: trimmedLine, reason: "Generic amount on clean line" });
                     }
+                    if(lineAmounts.length > 0) console.log(`Added P3 amounts: ${lineAmounts.join(', ')} from line "${trimmedLine}"`);
+                } else {
+                    console.log(`Skipped P3 for line "${trimmedLine}" due to VAT/Exclusion.`);
                 }
             }
         }
