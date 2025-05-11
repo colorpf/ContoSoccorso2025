@@ -128,10 +128,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function parseScontrinoText(text) {
-        console.log("Testo da analizzare (scontrino):\n", text);
+        console.log("Testo da analizzare (scontrino):\\n", text);
         let newItem = {
             type: "Non definito",
-            data: new Date().toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+            data: new Date().toLocaleDateString(\'it-IT\', { day: \'2-digit\', month: \'2-digit\', year: \'numeric\' }),
             importo: "0.00",
             categoria: "Scontrino", // Default category
             descrizione: "Scontrino" // Default description, will be updated
@@ -139,118 +139,103 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // --- INIZIO LOGICA IMPORTI MIGLIORATA ---
         let amounts = [];
-        
+
         const parseValueToFloat = (valStr) => {
             if (!valStr) return 0;
-            const normalized = valStr.replace(/\.(?=\d{3})/g, '').replace(',', '.');
+            // Gestisce 1.234,50 (rimuove . delle migliaia) e poi converte , in . per il float
+            // Gestisce anche 1234.50 (non fa nulla con .)
+            const normalized = valStr.replace(/\\.(?=\\d{3}(?:,|$))/g, \'\').replace(\',\', \'.\');
             return parseFloat(normalized) || 0;
         };
 
-        const lines = text.split('\n');
+        const lines = text.split(\'\\n\');
+        const potentialTotalsKeywords = [
+            { keyword: /(?:\\bTOTALE\\b|\\bIMPORTO\\s+PAGATO\\b|\\bNETTO\\s+A\\s+PAGARE\\b|\\bTOTALE\\s+EURO\\b|\\bTOTALE\\s+EUR\\b|CONTANTE\\s*EURO)/i, priority: 1 },
+            { keyword: /(?:\\bPAGATO\\b|\\bIMPORTO\\b|\\bCORRISPETTIVO\\b|\\bCONTANTE\\b|\\bTOTALE\\s+SCONTRINO\\b|\\bPAGAMENTO\\b|TOTALE\\sGENERALE)/i, priority: 2 }
+        ];
+        const amountRegex = /(\\d{1,3}(?:[.,]\\d{3})*[.,]\\d{2})\\b/g; // Regex per catturare gli importi
+        const vatExclusionRegex = /\\b(?:IVA|ALIQUOTA|IMPOSTA|VAT|TAX|%)[\sA-ZÀ-ÿ]*\\d/i; // Righe che probabilmente contengono IVA o percentuali
+        const generalExclusionKeywords = /SCONTO|RESTO|CREDITO|SUBTOTALE|RIEPILOGO\\s+ALIQUOTE|BUONO|TRONCARE|NON\\s+RISCOSSO|NON\\s+PAGATO|CODICE|ARTICOLO|TEL\\.|P\\.IVA|C\\.F\\.|SCONTRINO\\s+N\\.|DOC\\.|OPERAZIONE\\s+N\\./i;
+
         for (const line of lines) {
-            if (/IVA|IMPOSTA\sDI\sBOLLO|ALIQUOTA|SCONTO|RESTO|CREDITO|SUBTOTALE|RIEPILOGO\s+ALIQUOTE|BUONO|BUONI|TRONCARE|NON\s+RISCOSSO|NON\s+PAGATO/i.test(line)) {
+            const trimmedLine = line.trim();
+            if (!trimmedLine) continue;
+
+            let isLikelyVatOrIrrelevant = vatExclusionRegex.test(trimmedLine) || generalExclusionKeywords.test(trimmedLine);
+            let hasStrongTotalKeyword = potentialTotalsKeywords.some(ptk => ptk.priority === 1 && ptk.keyword.test(trimmedLine));
+
+            if (isLikelyVatOrIrrelevant && !hasStrongTotalKeyword) {
+                console.log(`Skipping line due to VAT/irrelevant keywords (and no strong total keyword): "${trimmedLine}"`);
                 continue;
             }
 
+            let lineAmounts = [];
             let match;
 
-            // Priorità 1: Parole chiave molto forti per il totale (RIMOSSO \010)
-            match = line.match(/(\b(?:TOTALE|IMPORTO\s+PAGATO|NETTO\s+A\s+PAGARE|TOTALE\s+EURO|TOTALE\s+EUR)[\sA-Z]*(?:EUR|€)?\s*)(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})\b/i);
-            if (match) {
-                amounts.push({ value: match[2], priority: 1, lineContext: line });
-                continue; 
+            // Reset lastIndex for global regex in a loop
+            amountRegex.lastIndex = 0; 
+            while ((match = amountRegex.exec(trimmedLine)) !== null) {
+                lineAmounts.push(match[1]);
             }
 
-            // Priorità 2: Parole chiave comuni per pagamenti o importi (RIMOSSO \010)
-            match = line.match(/(\b(?:PAGATO|IMPORTO|CORRISPETTIVO|CONTANTE|TOTALE\s+SCONTRINO|PAGAMENTO)[\sA-Z]*(?:EUR|€)?\s*)(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})\b/i);
-            if (match) {
-                amounts.push({ value: match[2], priority: 2, lineContext: line });
-                continue;
-            }
-            
-            // Priorità 3: Simbolo € o EUR seguito da un importo
-            match = line.match(/((?:EUR|€)\s*)(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})\b/i);
-            if (match) {
-                // Evita di catturare importi che sono chiaramente parte di date o codici se il simbolo € è ambiguo
-                if (line.match(/\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}/) && line.indexOf(match[2]) > line.match(/\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}/)[0].length + line.match(/\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}/).index && !line.match(/TOTALE|IMPORTO|PAGATO/i) ) {
-                    // Probabilmente un importo dopo una data, es. "€DD-MM-YYYY IMPORTO" -> OK
-                    // Ma se è "€NUMERO-CHE-FA-PARTE-DI-UN-CODICE IMPORTO", potrebbe essere rischioso.
-                    // Per ora, si accetta se non ci sono parole chiave di pagamento più forti.
+            if (lineAmounts.length > 0) {
+                let keywordFoundOnLine = false;
+                for (const ptk of potentialTotalsKeywords) {
+                    if (ptk.keyword.test(trimmedLine)) {
+                        // Usa l'ultimo importo sulla riga se c'è una parola chiave di totale
+                        amounts.push({ value: lineAmounts[lineAmounts.length - 1], priority: ptk.priority, lineContext: trimmedLine, reason: `Keyword: ${ptk.keyword.source}` });
+                        keywordFoundOnLine = true;
+                        break; 
+                    }
                 }
-                amounts.push({ value: match[2], priority: 3, lineContext: line });
-                continue;
-            }
-        }
-        
-        // Priorità 4: Fallback - cerca importi generici su righe "pulite" se non trovato nulla prima
-        if (amounts.length === 0) {
-            let fallbackAmounts = [];
-            // Riduciamo le parole chiave di esclusione per il fallback
-            const fallbackExclusionRegex = /IVA|ALIQUOTA|SCONTO|RESTO|SUBTOTALE|CREDITO|RIEPILOGO\s+ALIQUOTE|NON\s+RISCOSSO|NON\s+PAGATO|TRONCARE/i;
-            
-            for (const line of lines.slice().reverse()) { // Itera dalle ultime righe
-                 if (fallbackExclusionRegex.test(line)) { // Usa la nuova regex di esclusione
-                    continue;
-                }
-                const lineMatches = [...line.matchAll(/(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})\b/g)];
-                if (lineMatches.length > 0) {
-                    fallbackAmounts.push({ value: lineMatches[lineMatches.length -1][1], priority: 4, lineContext: line });
-                }
-            }
-            if (fallbackAmounts.length > 0) {
-                fallbackAmounts.sort((a,b) => parseValueToFloat(b.value) - parseValueToFloat(a.value));
-                amounts.push(fallbackAmounts[0]); 
-            }
-        }
-
-        // NUOVA FASE DI FALLBACK (Priorità 5) se ancora nessun importo
-        if (amounts.length === 0) {
-            console.log("Fallback priorità 4 non ha trovato importi, si tenta priorità 5.");
-            let veryFallbackAmounts = [];
-            const veryFallbackExclusionRegex = /RESTO|TRONCARE|NON\s+RISCOSSO|NON\s+PAGATO/i; // Pochissime esclusioni
-            const lastNLines = 7; // Considera le ultime 7 righe
-
-            for (const line of lines.slice(-lastNLines).reverse()) {
-                if (veryFallbackExclusionRegex.test(line)) {
-                    continue;
-                }
-                const lineMatches = [...line.matchAll(/(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})\b/g)];
-                if (lineMatches.length > 0) {
-                    // Prendi tutti gli importi validi su questa riga
-                    for (const match of lineMatches) {
-                        veryFallbackAmounts.push({ value: match[1], priority: 5, lineContext: line });
+                // Se non ci sono parole chiave di totale, ma la riga non è stata scartata e contiene importi
+                if (!keywordFoundOnLine) {
+                     // Riconferma esclusione IVA e parole chiave generali prima di aggiungere come priorità 3
+                    if (!vatExclusionRegex.test(trimmedLine) && !generalExclusionKeywords.test(trimmedLine)) {
+                        for (const la of lineAmounts) {
+                            amounts.push({ value: la, priority: 3, lineContext: trimmedLine, reason: "Generic amount on non-excluded line" });
+                        }
+                    } else if (hasStrongTotalKeyword) { // Se c'è una parola chiave forte, ma non è stata catturata prima (improbabile data la logica sopra, ma per sicurezza)
+                         for (const la of lineAmounts) {
+                            amounts.push({ value: la, priority: 3, lineContext: trimmedLine, reason: "Generic amount on line with strong total keyword (fallback)" });
+                        }
                     }
                 }
             }
-
-            if (veryFallbackAmounts.length > 0) {
-                // Tra tutti i candidati di questo fallback estremo, prendi quello con valore numerico più alto
-                veryFallbackAmounts.sort((a,b) => parseValueToFloat(b.value) - parseValueToFloat(a.value));
-                amounts.push(veryFallbackAmounts[0]);
-                console.log("Fallback priorità 5 ha trovato un importo:", veryFallbackAmounts[0]);
-            }
         }
-
+        
+        // La logica di fallback precedente (priorità 4 e 5 per le ultime righe) è stata temporaneamente rimossa
+        // per valutare l'efficacia di questa nuova logica più integrata.
+        // Se necessario, potrà essere reintrodotta o adattata.
 
         if (amounts.length > 0) {
-            amounts.sort((a, b) => {
-                if (a.priority !== b.priority) {
-                    return a.priority - b.priority;
-                }
-                return parseValueToFloat(b.value) - parseValueToFloat(a.value);
-            });
-            
-            console.log("Potential amounts found (sorted):", amounts);
+            console.log("Candidati importo trovati prima del filtraggio e ordinamento:", JSON.stringify(amounts.map(a => ({...a, valueFloat: parseValueToFloat(a.value)})), null, 2));
 
-            let bestAmountStr = amounts[0].value;
-            newItem.importo = bestAmountStr.replace(/\.(?=\d{3})/g, '').replace(',', '.');
-            newItem.type = "Spesa";
+            const highestPriority = Math.min(...amounts.map(a => a.priority));
+            amounts = amounts.filter(a => a.priority === highestPriority);
+
+            console.log(`Candidati dopo filtraggio per priorità ${highestPriority}:`, JSON.stringify(amounts.map(a => ({...a, valueFloat: parseValueToFloat(a.value)})), null, 2));
+
+            // Se ci sono più candidati con la stessa alta priorità, scegli quello con il valore numerico maggiore
+            amounts.sort((a, b) => parseValueToFloat(b.value) - parseValueToFloat(a.value));
+
+            console.log("Candidati dopo ordinamento per valore (decrescente):", JSON.stringify(amounts.map(a => ({...a, valueFloat: parseValueToFloat(a.value)})), null, 2));
+
+            if (amounts.length > 0) {
+                let bestAmountStr = amounts[0].value;
+                // Ri-applica la normalizzazione per assicurare il formato corretto per newItem.importo
+                newItem.importo = bestAmountStr.replace(/\\.(?=\\d{3}(?:,|$))/g, \'\').replace(\',\', \'.\');
+                newItem.type = "Spesa"; 
+                console.log(`Importo selezionato: ${newItem.importo} dalla riga: "${amounts[0].lineContext}" con priorità ${amounts[0].priority}`);
+            } else {
+                 console.log("Nessun importo valido trovato dopo filtraggio e ordinamento.");
+            }
         } else {
-             console.log("No reliable amount found with new logic. Check OCR text.");
+             console.log("Nessun importo candidato trovato nel testo OCR.");
         }
         // --- FINE LOGICA IMPORTI MIGLIORATA ---
         
-        const dataMatch = text.match(/(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})/);
+        const dataMatch = text.match(/(\\d{1,2}[\\/\\-.]\\d{1,2}[\\/\\-.]\\d{2,4})/);
         if (dataMatch) {
             let dataString = dataMatch[1].replace(/[\-.]/g, '/');
             let parts = dataString.split('/');
