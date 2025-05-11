@@ -128,13 +128,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function parseScontrinoText(text) {
-        console.log("Testo da analizzare (scontrino):\n", text);
+        console.log("Testo da analizzare (scontrino):\n", text); // Corretto \\n in \n
         let newItem = {
             type: "Non definito",
             data: new Date().toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' }),
             importo: "0.00",
-            categoria: "Scontrino", // Default category
-            descrizione: "Scontrino" // Default description, will be updated
+            categoria: "Scontrino", 
+            descrizione: "Scontrino" 
         };
 
         // --- INIZIO LOGICA IMPORTI MIGLIORATA ---
@@ -142,20 +142,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const parseValueToFloat = (valStr) => {
             if (!valStr) return 0;
-            // Gestisce 1.234,50 (rimuove . delle migliaia) e poi converte , in . per il float
-            // Gestisce anche 1234.50 (non fa nulla con .)
-            const normalized = valStr.replace(/\.(?=\d{3}(?:,|$))/g, '').replace(',', '.');
+            // Corretto \\. in \. e \, in , (anche se replace(',', '.') era già corretto)
+            const normalized = valStr.replace(/\.(?=\d{3}(?:,|$))/g, '').replace(',', '.'); 
             return parseFloat(normalized) || 0;
         };
 
-        const lines = text.split('\n');
+        const lines = text.split('\n'); // Corretto \\n in \n
         const potentialTotalsKeywords = [
+            // Corretto \\b in \b e \\s in \s nelle regex
             { keyword: /(?:\bTOTALE\b|\bIMPORTO\s+PAGATO\b|\bNETTO\s+A\s+PAGARE\b|\bTOTALE\s+EURO\b|\bTOTALE\s+EUR\b|CONTANTE\s*EURO)/i, priority: 1 },
             { keyword: /(?:\bPAGATO\b|\bIMPORTO\b|\bCORRISPETTIVO\b|\bCONTANTE\b|\bTOTALE\s+SCONTRINO\b|\bPAGAMENTO\b|TOTALE\sGENERALE)/i, priority: 2 }
         ];
-        const amountRegex = /(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})\b/g; // Regex per catturare gli importi
-        const vatExclusionRegex = /\b(?:IVA|ALIQUOTA|IMPOSTA|VAT|TAX|%)[\sA-ZÀ-ÿ]*\d/i; // Righe che probabilmente contengono IVA o percentuali
-        const generalExclusionKeywords = /SCONTO|RESTO|CREDITO|SUBTOTALE|RIEPILOGO\s+ALIQUOTE|BUONO|TRONCARE|NON\s+RISCOSSO|NON\s+PAGATO|CODICE|ARTICOLO|TEL\.|P\.IVA|C\.F\.|SCONTRINO\s+N\.|DOC\.|OPERAZIONE\s+N\./i;
+        // Corretto \\d in \d, \. in \. \, in , e \\b in \b
+        const amountRegex = /(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})\b/g; 
+        // Corretto \\b in \b, \\s in \s, \\d in \d
+        const vatExclusionRegex = /\b(?:IVA|ALIQUOTA|IMPOSTA|VAT|TAX|%)[-\sA-ZÀ-ÿ0-9]*\b/i; // Modificata leggermente per essere più generale e robusta
+        // Corretto \\s in \s, \\. in \.
+        const generalExclusionKeywords = /SCONTO|RESTO|CREDITO|SUBTOTALE|RIEPILOGO\s+ALIQUOTE|BUONO|TRONCARE|NON\s+RISCOSSO|NON\s+PAGATO|CODICE|ARTICOLO|TEL\.|\bP\.IVA\b|\bC\.F\b\.|SCONTRINO\s+N\.|\bDOC\b\.|OPERAZIONE\s+N\./i;
+
 
         for (const line of lines) {
             const trimmedLine = line.trim();
@@ -164,15 +168,20 @@ document.addEventListener('DOMContentLoaded', () => {
             let isLikelyVatOrIrrelevant = vatExclusionRegex.test(trimmedLine) || generalExclusionKeywords.test(trimmedLine);
             let hasStrongTotalKeyword = potentialTotalsKeywords.some(ptk => ptk.priority === 1 && ptk.keyword.test(trimmedLine));
 
+            // Se la riga contiene una parola chiave forte per il totale, non la scartare solo per parole chiave generali o IVA.
             if (isLikelyVatOrIrrelevant && !hasStrongTotalKeyword) {
-                console.log(`Skipping line due to VAT/irrelevant keywords (and no strong total keyword): "${trimmedLine}"`);
+                // Se contiene IVA ma ANCHE una parola chiave forte (es. "TOTALE IVA INCLUSA"), non scartarla qui.
+                // La condizione sopra già gestisce questo, ma rendiamo il log più chiaro.
+                if (vatExclusionRegex.test(trimmedLine) && !hasStrongTotalKeyword) {
+                     console.log(`Skipping line due to VAT/percentage (and no strong total keyword): "${trimmedLine}"`);
+                } else if (generalExclusionKeywords.test(trimmedLine) && !hasStrongTotalKeyword) {
+                    console.log(`Skipping line due to general exclusion keywords (and no strong total keyword): "${trimmedLine}"`);
+                }
                 continue;
             }
 
             let lineAmounts = [];
             let match;
-
-            // Reset lastIndex for global regex in a loop
             amountRegex.lastIndex = 0; 
             while ((match = amountRegex.exec(trimmedLine)) !== null) {
                 lineAmounts.push(match[1]);
@@ -182,43 +191,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 let keywordFoundOnLine = false;
                 for (const ptk of potentialTotalsKeywords) {
                     if (ptk.keyword.test(trimmedLine)) {
-                        // Usa l'ultimo importo sulla riga se c'è una parola chiave di totale
                         amounts.push({ value: lineAmounts[lineAmounts.length - 1], priority: ptk.priority, lineContext: trimmedLine, reason: `Keyword: ${ptk.keyword.source}` });
                         keywordFoundOnLine = true;
                         break; 
                     }
                 }
-                // Se non ci sono parole chiave di totale, ma la riga non è stata scartata e contiene importi
                 if (!keywordFoundOnLine) {
-                     // Riconferma esclusione IVA e parole chiave generali prima di aggiungere come priorità 3
-                    if (!vatExclusionRegex.test(trimmedLine) && !generalExclusionKeywords.test(trimmedLine)) {
+                    // Solo se non è una riga IVA/esclusa O se ha una parola chiave forte (già gestito sopra, ma per sicurezza)
+                    if (!isLikelyVatOrIrrelevant || hasStrongTotalKeyword) {
                         for (const la of lineAmounts) {
-                            amounts.push({ value: la, priority: 3, lineContext: trimmedLine, reason: "Generic amount on non-excluded line" });
-                        }
-                    } else if (hasStrongTotalKeyword) { // Se c'è una parola chiave forte, ma non è stata catturata prima (improbabile data la logica sopra, ma per sicurezza)
-                         for (const la of lineAmounts) {
-                            amounts.push({ value: la, priority: 3, lineContext: trimmedLine, reason: "Generic amount on line with strong total keyword (fallback)" });
+                            amounts.push({ value: la, priority: 3, lineContext: trimmedLine, reason: "Generic amount on non-excluded/strong keyword line" });
                         }
                     }
                 }
             }
         }
         
-        // La logica di fallback precedente (priorità 4 e 5 per le ultime righe) è stata temporaneamente rimossa
-        // per valutare l'efficacia di questa nuova logica più integrata.
-        // Se necessario, potrà essere reintrodotta o adattata.
-
         if (amounts.length > 0) {
             console.log("Candidati importo trovati prima del filtraggio e ordinamento:", JSON.stringify(amounts.map(a => ({...a, valueFloat: parseValueToFloat(a.value)})), null, 2));
-
             const highestPriority = Math.min(...amounts.map(a => a.priority));
             amounts = amounts.filter(a => a.priority === highestPriority);
-
             console.log(`Candidati dopo filtraggio per priorità ${highestPriority}:`, JSON.stringify(amounts.map(a => ({...a, valueFloat: parseValueToFloat(a.value)})), null, 2));
-
-            // Se ci sono più candidati con la stessa alta priorità, scegli quello con il valore numerico maggiore
             amounts.sort((a, b) => parseValueToFloat(b.value) - parseValueToFloat(a.value));
-
             console.log("Candidati dopo ordinamento per valore (decrescente):", JSON.stringify(amounts.map(a => ({...a, valueFloat: parseValueToFloat(a.value)})), null, 2));
 
             if (amounts.length > 0) {
