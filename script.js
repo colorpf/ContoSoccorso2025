@@ -128,10 +128,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function parseScontrinoText(text) {
-        console.log("Testo da analizzare (scontrino):\\n", text);
+        console.log("Testo da analizzare (scontrino):\n", text);
         let newItem = {
             type: "Non definito",
-            data: new Date().toLocaleDateString(\'it-IT\', { day: \'2-digit\', month: \'2-digit\', year: \'numeric\' }),
+            data: new Date().toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' }),
             importo: "0.00",
             categoria: "Scontrino", // Default category
             descrizione: "Scontrino" // Default description, will be updated
@@ -144,18 +144,18 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!valStr) return 0;
             // Gestisce 1.234,50 (rimuove . delle migliaia) e poi converte , in . per il float
             // Gestisce anche 1234.50 (non fa nulla con .)
-            const normalized = valStr.replace(/\\.(?=\\d{3}(?:,|$))/g, \'\').replace(\',\', \'.\');
+            const normalized = valStr.replace(/\.(?=\d{3}(?:,|$))/g, '').replace(',', '.');
             return parseFloat(normalized) || 0;
         };
 
-        const lines = text.split(\'\\n\');
+        const lines = text.split('\n');
         const potentialTotalsKeywords = [
-            { keyword: /(?:\\bTOTALE\\b|\\bIMPORTO\\s+PAGATO\\b|\\bNETTO\\s+A\\s+PAGARE\\b|\\bTOTALE\\s+EURO\\b|\\bTOTALE\\s+EUR\\b|CONTANTE\\s*EURO)/i, priority: 1 },
-            { keyword: /(?:\\bPAGATO\\b|\\bIMPORTO\\b|\\bCORRISPETTIVO\\b|\\bCONTANTE\\b|\\bTOTALE\\s+SCONTRINO\\b|\\bPAGAMENTO\\b|TOTALE\\sGENERALE)/i, priority: 2 }
+            { keyword: /(?:\bTOTALE\b|\bIMPORTO\s+PAGATO\b|\bNETTO\s+A\s+PAGARE\b|\bTOTALE\s+EURO\b|\bTOTALE\s+EUR\b|CONTANTE\s*EURO)/i, priority: 1 },
+            { keyword: /(?:\bPAGATO\b|\bIMPORTO\b|\bCORRISPETTIVO\b|\bCONTANTE\b|\bTOTALE\s+SCONTRINO\b|\bPAGAMENTO\b|TOTALE\sGENERALE)/i, priority: 2 }
         ];
-        const amountRegex = /(\\d{1,3}(?:[.,]\\d{3})*[.,]\\d{2})\\b/g; // Regex per catturare gli importi
-        const vatExclusionRegex = /\\b(?:IVA|ALIQUOTA|IMPOSTA|VAT|TAX|%)[\sA-ZÀ-ÿ]*\\d/i; // Righe che probabilmente contengono IVA o percentuali
-        const generalExclusionKeywords = /SCONTO|RESTO|CREDITO|SUBTOTALE|RIEPILOGO\\s+ALIQUOTE|BUONO|TRONCARE|NON\\s+RISCOSSO|NON\\s+PAGATO|CODICE|ARTICOLO|TEL\\.|P\\.IVA|C\\.F\\.|SCONTRINO\\s+N\\.|DOC\\.|OPERAZIONE\\s+N\\./i;
+        const amountRegex = /(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})\b/g; // Regex per catturare gli importi
+        const vatExclusionRegex = /\b(?:IVA|ALIQUOTA|IMPOSTA|VAT|TAX|%)[\sA-ZÀ-ÿ]*\d/i; // Righe che probabilmente contengono IVA o percentuali
+        const generalExclusionKeywords = /SCONTO|RESTO|CREDITO|SUBTOTALE|RIEPILOGO\s+ALIQUOTE|BUONO|TRONCARE|NON\s+RISCOSSO|NON\s+PAGATO|CODICE|ARTICOLO|TEL\.|P\.IVA|C\.F\.|SCONTRINO\s+N\.|DOC\.|OPERAZIONE\s+N\./i;
 
         for (const line of lines) {
             const trimmedLine = line.trim();
@@ -224,7 +224,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (amounts.length > 0) {
                 let bestAmountStr = amounts[0].value;
                 // Ri-applica la normalizzazione per assicurare il formato corretto per newItem.importo
-                newItem.importo = bestAmountStr.replace(/\\.(?=\\d{3}(?:,|$))/g, \'\').replace(\',\', \'.\');
+                newItem.importo = bestAmountStr.replace(/\.(?=\d{3}(?:,|$))/g, '').replace(',', '.');
                 newItem.type = "Spesa"; 
                 console.log(`Importo selezionato: ${newItem.importo} dalla riga: "${amounts[0].lineContext}" con priorità ${amounts[0].priority}`);
             } else {
@@ -235,7 +235,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         // --- FINE LOGICA IMPORTI MIGLIORATA ---
         
-        const dataMatch = text.match(/(\\d{1,2}[\\/\\-.]\\d{1,2}[\\/\\-.]\\d{2,4})/);
+        const dataMatch = text.match(/(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})/);
         if (dataMatch) {
             let dataString = dataMatch[1].replace(/[\-.]/g, '/');
             let parts = dataString.split('/');
