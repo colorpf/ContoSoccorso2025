@@ -133,118 +133,82 @@ document.addEventListener('DOMContentLoaded', () => {
             type: "Non definito",
             data: new Date().toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' }),
             importo: "0.00",
-            categoria: "Scontrino", 
-            descrizione: "Scontrino" 
+            categoria: "Scontrino",
+            descrizione: "Scontrino"
         };
 
-        // --- INIZIO LOGICA IMPORTI MIGLIORATA ---
+        // --- LOGICA IMPORTO MIGLIORATA ---
         let amounts = [];
-
         const parseValueToFloat = (valStr) => {
             if (!valStr) return 0;
-            // Corretto \\. in \. e \, in , (anche se replace(',', '.') era già corretto)
-            const normalized = valStr.replace(/\.(?=\d{3}(?:,|$))/g, '').replace(',', '.'); 
+            const normalized = valStr.replace(/\.(?=\d{3}(?:,|$))/g, '').replace(',', '.');
             return parseFloat(normalized) || 0;
         };
-
         const lines = text.split('\n');
-        const potentialTotalsKeywords = [
-            { keyword: /(?:\bTOTALE\b|\bIMPORTO\s+PAGATO\b|\bNETTO\s+A\s+PAGARE\b|\bTOTALE\s+EURO\b|\bTOTALE\s+EUR\b|CONTANTE\s*EURO)/i, priority: 1 },
-            { keyword: /(?:\bPAGATO\b|\bIMPORTO\b|\bCORRISPETTIVO\b|\bCONTANTE\b|\bTOTALE\s+SCONTRINO\b|\bPAGAMENTO\b|TOTALE\sGENERALE)/i, priority: 2 }
+        // Parole chiave forti per il totale
+        const totalKeywords = [
+            /TOTALE\s+COMPLESSIVO/i,
+            /TOTALE\s+EURO/i,
+            /TOTALE\s+EUR/i,
+            /TOTALE\s+SCONTRINO/i,
+            /TOTALE\s+DA\s+PAGARE/i,
+            /TOTALE\s+FATTURA/i,
+            /TOTALE/i,
+            /IMPORTO\s+PAGATO/i,
+            /NETTO\s+A\s+PAGARE/i,
+            /PAGAMENTO\s+CONTANTE/i,
+            /PAGAMENTO\s+ELETTRONICO/i,
+            /IMPORTO\s+DA\s+PAGARE/i,
+            /IMPORTO/i,
+            /PAGATO/i
         ];
         const amountRegex = /(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})\b/g;
-        const vatExclusionRegex = /\b(?:IVA|ALIQUOTA|IMPOSTA|VAT|TAX|%)/i; // Semplificata per testare solo la parola chiave IVA/percento
-        const generalExclusionKeywords = /SCONTO|RESTO|CREDITO|SUBTOTALE|RIEPILOGO\s+ALIQUOTE|BUONO|TRONCARE|NON\s+RISCOSSO|NON\s+PAGATO|CODICE|ARTICOLO|TEL\.|\bP\.IVA\b|\bC\.F\b\.|SCONTRINO\s+N\.|\bDOC\b\.|OPERAZIONE\s+N\./i;
+        // Parole chiave da escludere
+        const excludeKeywords = /IVA|ALIQUOTA|IMPOSTA|TAX|SCONTO|RESTO|CREDITO|SUBTOTALE|RIEPILOGO\s+ALIQUOTE|BUONO|TRONCARE|NON\s+RISCOSSO|NON\s+PAGATO|CODICE|ARTICOLO|TEL\.|P\.IVA|C\.F\.|SCONTRINO\s+N\.|DOC\.|OPERAZIONE\s+N\./i;
 
         for (const line of lines) {
             const trimmedLine = line.trim();
             if (!trimmedLine) continue;
-
-            let lineAmounts = [];
-            let matchAm; 
-            amountRegex.lastIndex = 0;
-            while ((matchAm = amountRegex.exec(trimmedLine)) !== null) {
-                lineAmounts.push(matchAm[1]);
-            }
-
-            if (lineAmounts.length === 0) { 
-                continue;
-            }
-            
-            console.log(`Processing line with amounts: "${trimmedLine}"`, lineAmounts);
-
-            const p1KeywordMatch = potentialTotalsKeywords.find(ptk => ptk.priority === 1 && ptk.keyword.test(trimmedLine));
-            const p2KeywordMatch = potentialTotalsKeywords.find(ptk => ptk.priority === 2 && ptk.keyword.test(trimmedLine));
-            
-            const isVatLine = vatExclusionRegex.test(trimmedLine);
-            const isGenerallyExcludedLine = generalExclusionKeywords.test(trimmedLine);
-
-            console.log(`Line: "${trimmedLine}" -> P1 Keyword: ${p1KeywordMatch ? p1KeywordMatch.keyword.source : 'none'}, P2 Keyword: ${p2KeywordMatch ? p2KeywordMatch.keyword.source : 'none'}, Is VAT: ${isVatLine}, Is GenExcluded: ${isGenerallyExcludedLine}`);
-
-            if (p1KeywordMatch) {
-                amounts.push({ value: lineAmounts[lineAmounts.length - 1], priority: 1, lineContext: trimmedLine, reason: `Keyword P1: ${p1KeywordMatch.keyword.source}` });
-                console.log(`Added P1 amount: ${lineAmounts[lineAmounts.length - 1]} from line "${trimmedLine}"`);
-            } else if (p2KeywordMatch) {
-                // Evita di prendere da righe IVA a meno che la parola chiave P2 non sia forte (es. PAGATO, TOTALE)
-                if (isVatLine && !p2KeywordMatch.keyword.source.match(/PAGATO|TOTALE|IMPORTO/i)) { 
-                    console.log(`Skipping P2 on VAT line (keyword not PAGATO/TOTALE/IMPORTO): "${trimmedLine}"`);
-                } else {
-                    amounts.push({ value: lineAmounts[lineAmounts.length - 1], priority: 2, lineContext: trimmedLine, reason: `Keyword P2: ${p2KeywordMatch.keyword.source}` });
-                    console.log(`Added P2 amount: ${lineAmounts[lineAmounts.length - 1]} from line "${trimmedLine}"`);
-                }
-            } else {
-                // Priorità 3: riga senza keyword P1/P2, e non è una riga IVA o generalmente esclusa
-                if (!isVatLine && !isGenerallyExcludedLine) {
-                    for (const la of lineAmounts) { 
-                        amounts.push({ value: la, priority: 3, lineContext: trimmedLine, reason: "Generic amount on clean line" });
+            let match;
+            let foundKeyword = false;
+            for (const kw of totalKeywords) {
+                if (kw.test(trimmedLine)) {
+                    foundKeyword = true;
+                    let lastAmount = null;
+                    while ((match = amountRegex.exec(trimmedLine)) !== null) {
+                        lastAmount = match[1];
                     }
-                    if(lineAmounts.length > 0) console.log(`Added P3 amounts: ${lineAmounts.join(', ')} from line "${trimmedLine}"`);
-                } else {
-                    console.log(`Skipped P3 for line "${trimmedLine}" due to VAT/Exclusion.`);
+                    if (lastAmount) {
+                        amounts.push({ value: lastAmount, priority: 1, lineContext: trimmedLine });
+                    }
+                    break;
+                }
+            }
+            if (!foundKeyword && !excludeKeywords.test(trimmedLine)) {
+                // Se non è una riga da escludere, prendi tutti gli importi come fallback
+                while ((match = amountRegex.exec(trimmedLine)) !== null) {
+                    amounts.push({ value: match[1], priority: 2, lineContext: trimmedLine });
                 }
             }
         }
-        
         if (amounts.length > 0) {
-            console.log("Candidati importo trovati prima del filtraggio e ordinamento:", JSON.stringify(amounts.map(a => ({...a, valueFloat: parseValueToFloat(a.value)})), null, 2));
-            const highestPriority = Math.min(...amounts.map(a => a.priority));
-            amounts = amounts.filter(a => a.priority === highestPriority);
-            console.log(`Candidati dopo filtraggio per priorità ${highestPriority}:`, JSON.stringify(amounts.map(a => ({...a, valueFloat: parseValueToFloat(a.value)})), null, 2));
-            amounts.sort((a, b) => parseValueToFloat(b.value) - parseValueToFloat(a.value));
-            console.log("Candidati dopo ordinamento per valore (decrescente):", JSON.stringify(amounts.map(a => ({...a, valueFloat: parseValueToFloat(a.value)})), null, 2));
-
-            if (amounts.length > 0) {
-                let bestAmountStr = amounts[0].value;
-                // Ri-applica la normalizzazione per assicurare il formato corretto per newItem.importo
-                newItem.importo = bestAmountStr.replace(/\.(?=\d{3}(?:,|$))/g, '').replace(',', '.');
-                newItem.type = "Spesa"; 
-                console.log(`Importo selezionato: ${newItem.importo} dalla riga: "${amounts[0].lineContext}" con priorità ${amounts[0].priority}`);
-            } else {
-                 console.log("Nessun importo valido trovato dopo filtraggio e ordinamento.");
-            }
-        } else {
-             console.log("Nessun importo candidato trovato nel testo OCR.");
+            // Prima scegli tra quelli con priorità 1, poi tra i fallback
+            const bestPriority = Math.min(...amounts.map(a => a.priority));
+            const candidates = amounts.filter(a => a.priority === bestPriority);
+            candidates.sort((a, b) => parseValueToFloat(b.value) - parseValueToFloat(a.value));
+            let bestAmountStr = candidates[0].value;
+            newItem.importo = bestAmountStr.replace(/\.(?=\d{3}(?:,|$))/g, '').replace(',', '.');
+            newItem.type = "Spesa";
         }
-        // --- FINE LOGICA IMPORTI MIGLIORATA ---
-        
-        const dataMatch = text.match(/(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4})/);
-        if (dataMatch) {
-            let dataString = dataMatch[1].replace(/[\-.]/g, '/');
-            let parts = dataString.split('/');
-            if (parts.length === 3) {
-                let day = parts[0].padStart(2, '0');
-                let month = parts[1].padStart(2, '0');
-                let year = parts[2];
-                if (year.length === 2) year = "20" + year; 
-                newItem.data = `${day}/${month}/${year}`;
-            }
-        }
+        // --- FINE LOGICA IMPORTO ---
 
-        // --- NEW DESCRIPTION AND CATEGORY LOGIC ---
+        // --- LOGICA DESCRIZIONE MIGLIORATA ---
         let specificStoreFound = false;
-
-        // Prioritize specific store names for description and category
-        if (text.match(/CONAD/i)) {
+        if (text.match(/LIDL/i)) {
+            newItem.categoria = "Spesa Alimentare";
+            newItem.descrizione = "LIDL";
+            specificStoreFound = true;
+        } else if (text.match(/CONAD/i)) {
             newItem.categoria = "Spesa Alimentare";
             newItem.descrizione = "CONAD";
             specificStoreFound = true;
@@ -252,15 +216,11 @@ document.addEventListener('DOMContentLoaded', () => {
             newItem.categoria = "Spesa Alimentare";
             newItem.descrizione = "ESSELUNGA";
             specificStoreFound = true;
-        } else if (text.match(/LIDL/i)) {
-            newItem.categoria = "Spesa Alimentare";
-            newItem.descrizione = "LIDL";
-            specificStoreFound = true;
-        } else if (text.match(/\bBRICO\b/i) && !text.match(/BRICOMAN|LEROY MERLIN|BRICOCENTER/i)) { 
+        } else if (text.match(/\bBRICO\b/i) && !text.match(/BRICOMAN|LEROY MERLIN|BRICOCENTER/i)) {
             newItem.categoria = "Fai da te";
-            newItem.descrizione = "Brico"; 
+            newItem.descrizione = "Brico";
             specificStoreFound = true;
-        } else if (text.match(/TECNOMAT|BRICOMAN/i)) { 
+        } else if (text.match(/TECNOMAT|BRICOMAN/i)) {
             newItem.categoria = "Fai da te";
             newItem.descrizione = text.match(/TECNOMAT/i) ? "TECNOMAT" : "BRICOMAN";
             specificStoreFound = true;
@@ -268,18 +228,16 @@ document.addEventListener('DOMContentLoaded', () => {
             newItem.categoria = "Fai da te";
             newItem.descrizione = "Leroy Merlin";
             specificStoreFound = true;
-        } else if (text.match(/BRICOCENTER/i)) { 
+        } else if (text.match(/BRICOCENTER/i)) {
             newItem.categoria = "Fai da te";
             newItem.descrizione = "Bricocenter";
             specificStoreFound = true;
-        } else if (text.match(/MCDONALD'?S?/i)) { 
+        } else if (text.match(/MCDONALD'?S?/i)) {
             newItem.categoria = "Pasti Fuori";
             newItem.descrizione = "McDonald's";
             specificStoreFound = true;
-        } // Add more specific stores here
-
-
-        // If no specific store was found, try general categories
+        }
+        // ...altre regole...
         if (!specificStoreFound) {
             if (text.match(/SUPERMERCATO|ALIMENTARI/i)) {
                 newItem.categoria = "Spesa Alimentare";
@@ -290,24 +248,21 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (text.match(/PIZZERIA/i)) {
                 newItem.categoria = "Pasti Fuori";
                 newItem.descrizione = "Pizzeria";
-            } else if (text.match(/\bBAR\b/i) && !text.match(/BARCODE/i)) { // Check for whole word BAR and not in BARCODE
+            } else if (text.match(/\bBAR\b/i) && !text.match(/BARCODE/i)) {
                 newItem.categoria = "Pasti Fuori";
                 newItem.descrizione = "Bar";
-            } else if (text.match(/CAFFÈ|CAFFETTERIA/i)) { 
+            } else if (text.match(/CAFFÈ|CAFFETTERIA/i)) {
                 newItem.categoria = "Pasti Fuori";
                 newItem.descrizione = text.match(/CAFFETTERIA/i) ? "Caffetteria" : "Caffè";
             } else if (text.match(/FARMACIA/i)) {
                 newItem.categoria = "Salute";
                 newItem.descrizione = "Farmacia";
-            } else if (text.match(/MEDICINALI|PRODOTTI SANITARI/i) ) { 
+            } else if (text.match(/MEDICINALI|PRODOTTI SANITARI/i)) {
                 newItem.categoria = "Salute";
                 newItem.descrizione = "Prodotti Salute";
-            } 
-            // Removed the old generic Brico rule as it's now more specific
+            }
         }
-
-        // Fallback: If description is still the default "Scontrino" and category is also "Scontrino",
-        // try the original advanced parsing logic to find a more descriptive line.
+        // Fallback descrizione: prima riga significativa
         if (newItem.descrizione === "Scontrino" && newItem.categoria === "Scontrino") {
             const textLines = text.split('\n');
             let potentialDescription = "";
@@ -316,29 +271,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (cleanedLine.length > 4 && cleanedLine.length < 50 &&
                     (cleanedLine.match(/[a-zA-Z]/g) || []).length >= cleanedLine.length * 0.4 &&
                     !cleanedLine.match(/VIA|PIAZZA|CORSO|P\.IVA|C\.F\.|TEL\.|CAP\s\d{5}/i) &&
-                    !cleanedLine.match(/^\d[\d\s\.,\-:\/]*$/) && 
+                    !cleanedLine.match(/^\d[\d\s\.,\-:\/]*$/) &&
                     !cleanedLine.toLowerCase().includes("scontrino") &&
                     !cleanedLine.toLowerCase().includes("documento n.") &&
                     !cleanedLine.toLowerCase().includes("totale")) {
                     potentialDescription = cleanedLine;
-                    break; 
+                    break;
                 }
             }
-            
             if (potentialDescription) {
                 newItem.descrizione = potentialDescription;
             } else {
                 const primeRighe = textLines.filter(l => l.trim().length > 3).slice(0, 2).join(' ').trim();
-                newItem.descrizione = primeRighe.substring(0, 50) || "Scontrino"; // Default to "Scontrino" if empty
+                newItem.descrizione = primeRighe.substring(0, 50) || "Scontrino";
             }
         }
-        
-        // Final cleanup for description
         newItem.descrizione = newItem.descrizione.replace(/^[^a-zA-Z0-9À-ÿ]+|[^a-zA-Z0-9À-ÿ]+$/g, '').trim();
         if (newItem.descrizione.length === 0) {
-            newItem.descrizione = "Scontrino"; // Ensure description is not empty
+            newItem.descrizione = "Scontrino";
         }
-        // --- END NEW DESCRIPTION AND CATEGORY LOGIC ---
+        // --- FINE LOGICA DESCRIZIONE ---
 
         console.log("Dati estratti dallo scontrino (processati):", newItem);
         return newItem;
