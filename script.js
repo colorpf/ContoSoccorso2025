@@ -137,7 +137,7 @@ document.addEventListener('DOMContentLoaded', () => {
             descrizione: "Scontrino"
         };
 
-        // --- LOGICA IMPORTO MIGLIORATA ---
+        // --- LOGICA IMPORTO MIGLIORATA (parole chiave + cerca nelle righe successive) ---
         let amounts = [];
         const parseValueToFloat = (valStr) => {
             if (!valStr) return 0;
@@ -145,7 +145,6 @@ document.addEventListener('DOMContentLoaded', () => {
             return parseFloat(normalized) || 0;
         };
         const lines = text.split('\n');
-        // Parole chiave forti per il totale
         const totalKeywords = [
             /TOTALE\s+COMPLESSIVO/i,
             /TOTALE\s+EURO/i,
@@ -163,11 +162,10 @@ document.addEventListener('DOMContentLoaded', () => {
             /PAGATO/i
         ];
         const amountRegex = /(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})\b/g;
-        // Parole chiave da escludere
         const excludeKeywords = /IVA|ALIQUOTA|IMPOSTA|TAX|SCONTO|RESTO|CREDITO|SUBTOTALE|RIEPILOGO\s+ALIQUOTE|BUONO|TRONCARE|NON\s+RISCOSSO|NON\s+PAGATO|CODICE|ARTICOLO|TEL\.|P\.IVA|C\.F\.|SCONTRINO\s+N\.|DOC\.|OPERAZIONE\s+N\./i;
 
-        for (const line of lines) {
-            const trimmedLine = line.trim();
+        for (let i = 0; i < lines.length; i++) {
+            const trimmedLine = lines[i].trim();
             if (!trimmedLine) continue;
             let match;
             let foundKeyword = false;
@@ -180,6 +178,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     if (lastAmount) {
                         amounts.push({ value: lastAmount, priority: 1, lineContext: trimmedLine });
+                    } else {
+                        // Se la riga con parola chiave NON contiene importi, cerca nelle 2 righe successive
+                        for (let j = 1; j <= 2 && (i + j) < lines.length; j++) {
+                            const nextLine = lines[i + j].trim();
+                            if (!nextLine || excludeKeywords.test(nextLine)) continue;
+                            let nextMatch;
+                            let foundAmount = null;
+                            while ((nextMatch = amountRegex.exec(nextLine)) !== null) {
+                                foundAmount = nextMatch[1];
+                            }
+                            if (foundAmount) {
+                                amounts.push({ value: foundAmount, priority: 1, lineContext: nextLine });
+                                break; // Prendi solo la prima riga successiva valida
+                            }
+                        }
                     }
                     break;
                 }
@@ -192,7 +205,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         if (amounts.length > 0) {
-            // Prima scegli tra quelli con priorità 1, poi tra i fallback
             const bestPriority = Math.min(...amounts.map(a => a.priority));
             const candidates = amounts.filter(a => a.priority === bestPriority);
             candidates.sort((a, b) => parseValueToFloat(b.value) - parseValueToFloat(a.value));
