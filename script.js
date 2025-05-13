@@ -173,24 +173,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (kw.test(trimmedLine)) {
                     foundKeyword = true;
                     let lastAmount = null;
+                    let allAmounts = [];
                     while ((match = amountRegex.exec(trimmedLine)) !== null) {
-                        lastAmount = match[1];
+                        allAmounts.push(match[1]);
                     }
-                    if (lastAmount) {
+                    if (allAmounts.length > 0) {
+                        // Prendi sempre l'ultimo importo (più a destra)
+                        lastAmount = allAmounts[allAmounts.length - 1];
                         amounts.push({ value: lastAmount, priority: 1, lineContext: trimmedLine });
                     } else {
-                        // Cerca la prima riga successiva (anche se è solo un numero) che contiene un importo
+                        // Cerca la prima riga successiva (anche se è solo un numero) che contiene almeno un importo
                         for (let j = 1; j <= 2 && (i + j) < lines.length; j++) {
                             const nextLine = lines[i + j].trim();
                             if (!nextLine) continue;
                             let nextMatch;
-                            let foundAmount = null;
+                            let nextAmounts = [];
                             while ((nextMatch = amountRegex.exec(nextLine)) !== null) {
-                                foundAmount = nextMatch[1];
+                                nextAmounts.push(nextMatch[1]);
                             }
-                            if (foundAmount) {
-                                amounts.push({ value: foundAmount, priority: 1, lineContext: nextLine });
-                                break; // Prendi solo la prima riga successiva valida
+                            if (nextAmounts.length > 0) {
+                                // Prendi sempre l'ultimo importo (più a destra) anche nella riga successiva
+                                amounts.push({ value: nextAmounts[nextAmounts.length - 1], priority: 1, lineContext: nextLine });
+                                break;
                             }
                         }
                     }
@@ -198,9 +202,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
             if (!foundKeyword && !excludeKeywords.test(trimmedLine)) {
-                // Se non è una riga da escludere, prendi tutti gli importi come fallback
+                // Se non è una riga da escludere, prendi sempre l'ultimo importo (più a destra) come fallback
+                let fallbackAmounts = [];
                 while ((match = amountRegex.exec(trimmedLine)) !== null) {
-                    amounts.push({ value: match[1], priority: 2, lineContext: trimmedLine });
+                    fallbackAmounts.push(match[1]);
+                }
+                if (fallbackAmounts.length > 0) {
+                    amounts.push({ value: fallbackAmounts[fallbackAmounts.length - 1], priority: 2, lineContext: trimmedLine });
                 }
             }
         }
