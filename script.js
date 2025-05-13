@@ -179,10 +179,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (lastAmount) {
                         amounts.push({ value: lastAmount, priority: 1, lineContext: trimmedLine });
                     } else {
-                        // Se la riga con parola chiave NON contiene importi, cerca nelle 2 righe successive
+                        // Cerca la prima riga successiva (anche se è solo un numero) che contiene un importo
                         for (let j = 1; j <= 2 && (i + j) < lines.length; j++) {
                             const nextLine = lines[i + j].trim();
-                            if (!nextLine || excludeKeywords.test(nextLine)) continue;
+                            if (!nextLine) continue;
                             let nextMatch;
                             let foundAmount = null;
                             while ((nextMatch = amountRegex.exec(nextLine)) !== null) {
