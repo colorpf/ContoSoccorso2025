@@ -137,7 +137,7 @@ document.addEventListener('DOMContentLoaded', () => {
             descrizione: "Scontrino"
         };
 
-        // --- LOGICA IMPORTO MIGLIORATA (parole chiave + cerca nelle righe successive + fallback ultime righe) ---
+        // --- LOGICA IMPORTO MIGLIORATA (parole chiave + cerca nelle 5 righe successive + fallback ultime 8 righe con log) ---
         let amounts = [];
         const parseValueToFloat = (valStr) => {
             if (!valStr) return 0;
@@ -164,7 +164,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const amountRegex = /(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})\b/g;
         const excludeKeywords = /IVA|ALIQUOTA|IMPOSTA|TAX|SCONTO|RESTO|CREDITO|SUBTOTALE|RIEPILOGO\s+ALIQUOTE|BUONO|TRONCARE|NON\s+RISCOSSO|NON\s+PAGATO|CODICE|ARTICOLO|TEL\.|P\.IVA|C\.F\.|SCONTRINO\s+N\.|DOC\.|OPERAZIONE\s+N\./i;
 
-        // Prima cerca con priorità 1 (parole chiave forti)
+        // Cerca con priorità 1 (parole chiave forti) e nelle 5 righe successive
         for (let i = 0; i < lines.length; i++) {
             const trimmedLine = lines[i].trim();
             if (!trimmedLine) continue;
@@ -182,8 +182,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         lastAmount = allAmounts[allAmounts.length - 1];
                         amounts.push({ value: lastAmount, priority: 1, lineContext: trimmedLine });
                     } else {
-                        // Cerca la prima riga successiva (anche se è solo un numero) che contiene almeno un importo
-                        for (let j = 1; j <= 2 && (i + j) < lines.length; j++) {
+                        // Cerca la prima riga successiva (anche se è solo un numero) che contiene almeno un importo (fino a 5 righe dopo)
+                        for (let j = 1; j <= 5 && (i + j) < lines.length; j++) {
                             const nextLine = lines[i + j].trim();
                             if (!nextLine) continue;
                             let nextMatch;
@@ -201,9 +201,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         }
-        // Se non hai trovato nulla con priorità 1, cerca fallback nelle ultime 5 righe non escluse
+        // Se non hai trovato nulla con priorità 1, cerca fallback nelle ultime 8 righe non escluse e logga i numeri trovati
         if (amounts.length === 0) {
-            const lastLines = lines.slice(-5);
+            const lastLines = lines.slice(-8);
             let fallbackCandidates = [];
             for (const l of lastLines) {
                 const trimmed = l.trim();
@@ -218,9 +218,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
             if (fallbackCandidates.length > 0) {
-                // Prendi il valore più alto tra quelli trovati nelle ultime righe
+                console.log('Importi trovati nelle ultime 8 righe:', fallbackCandidates);
                 fallbackCandidates.sort((a, b) => parseValueToFloat(b) - parseValueToFloat(a));
                 amounts.push({ value: fallbackCandidates[0], priority: 2, lineContext: 'fallback ultime righe' });
+            } else {
+                console.log('Nessun importo trovato nelle ultime 8 righe utili.');
             }
         }
         // Se ancora nulla, fallback classico: prendi l'ultimo importo (più a destra) su una riga non esclusa
