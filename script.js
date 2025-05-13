@@ -137,7 +137,7 @@ document.addEventListener('DOMContentLoaded', () => {
             descrizione: "Scontrino"
         };
 
-        // --- LOGICA IMPORTO MIGLIORATA (parole chiave + cerca nelle righe successive) ---
+        // --- LOGICA IMPORTO MIGLIORATA (parole chiave + cerca nelle righe successive + fallback ultime righe) ---
         let amounts = [];
         const parseValueToFloat = (valStr) => {
             if (!valStr) return 0;
@@ -164,6 +164,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const amountRegex = /(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})\b/g;
         const excludeKeywords = /IVA|ALIQUOTA|IMPOSTA|TAX|SCONTO|RESTO|CREDITO|SUBTOTALE|RIEPILOGO\s+ALIQUOTE|BUONO|TRONCARE|NON\s+RISCOSSO|NON\s+PAGATO|CODICE|ARTICOLO|TEL\.|P\.IVA|C\.F\.|SCONTRINO\s+N\.|DOC\.|OPERAZIONE\s+N\./i;
 
+        // Prima cerca con priorità 1 (parole chiave forti)
         for (let i = 0; i < lines.length; i++) {
             const trimmedLine = lines[i].trim();
             if (!trimmedLine) continue;
@@ -178,7 +179,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         allAmounts.push(match[1]);
                     }
                     if (allAmounts.length > 0) {
-                        // Prendi sempre l'ultimo importo (più a destra)
                         lastAmount = allAmounts[allAmounts.length - 1];
                         amounts.push({ value: lastAmount, priority: 1, lineContext: trimmedLine });
                     } else {
@@ -192,7 +192,6 @@ document.addEventListener('DOMContentLoaded', () => {
                                 nextAmounts.push(nextMatch[1]);
                             }
                             if (nextAmounts.length > 0) {
-                                // Prendi sempre l'ultimo importo (più a destra) anche nella riga successiva
                                 amounts.push({ value: nextAmounts[nextAmounts.length - 1], priority: 1, lineContext: nextLine });
                                 break;
                             }
@@ -201,14 +200,41 @@ document.addEventListener('DOMContentLoaded', () => {
                     break;
                 }
             }
-            if (!foundKeyword && !excludeKeywords.test(trimmedLine)) {
-                // Se non è una riga da escludere, prendi sempre l'ultimo importo (più a destra) come fallback
+        }
+        // Se non hai trovato nulla con priorità 1, cerca fallback nelle ultime 5 righe non escluse
+        if (amounts.length === 0) {
+            const lastLines = lines.slice(-5);
+            let fallbackCandidates = [];
+            for (const l of lastLines) {
+                const trimmed = l.trim();
+                if (!trimmed || excludeKeywords.test(trimmed)) continue;
+                let match;
+                let allAmounts = [];
+                while ((match = amountRegex.exec(trimmed)) !== null) {
+                    allAmounts.push(match[1]);
+                }
+                if (allAmounts.length > 0) {
+                    fallbackCandidates.push(...allAmounts);
+                }
+            }
+            if (fallbackCandidates.length > 0) {
+                // Prendi il valore più alto tra quelli trovati nelle ultime righe
+                fallbackCandidates.sort((a, b) => parseValueToFloat(b) - parseValueToFloat(a));
+                amounts.push({ value: fallbackCandidates[0], priority: 2, lineContext: 'fallback ultime righe' });
+            }
+        }
+        // Se ancora nulla, fallback classico: prendi l'ultimo importo (più a destra) su una riga non esclusa
+        if (amounts.length === 0) {
+            for (const l of lines) {
+                const trimmed = l.trim();
+                if (!trimmed || excludeKeywords.test(trimmed)) continue;
+                let match;
                 let fallbackAmounts = [];
-                while ((match = amountRegex.exec(trimmedLine)) !== null) {
+                while ((match = amountRegex.exec(trimmed)) !== null) {
                     fallbackAmounts.push(match[1]);
                 }
                 if (fallbackAmounts.length > 0) {
-                    amounts.push({ value: fallbackAmounts[fallbackAmounts.length - 1], priority: 2, lineContext: trimmedLine });
+                    amounts.push({ value: fallbackAmounts[fallbackAmounts.length - 1], priority: 3, lineContext: trimmed });
                 }
             }
         }
