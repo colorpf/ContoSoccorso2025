@@ -137,7 +137,7 @@ document.addEventListener('DOMContentLoaded', () => {
             descrizione: "Scontrino"
         };
 
-        // --- LOGICA IMPORTO MIGLIORATA (parole chiave + cerca nelle 5 righe successive + fallback ultime 8 righe con log) ---
+        // --- LOGICA IMPORTO MIGLIORATA (parole chiave + cerca nelle 5 righe successive + fallback su tutte le righe non escluse) ---
         let amounts = [];
         const parseValueToFloat = (valStr) => {
             if (!valStr) return 0;
@@ -201,11 +201,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         }
-        // Se non hai trovato nulla con priorità 1, cerca fallback nelle ultime 8 righe non escluse e logga i numeri trovati
+        // Se non hai trovato nulla con priorità 1, cerca fallback su tutte le righe non escluse
         if (amounts.length === 0) {
-            const lastLines = lines.slice(-8);
             let fallbackCandidates = [];
-            for (const l of lastLines) {
+            for (const l of lines) {
                 const trimmed = l.trim();
                 if (!trimmed || excludeKeywords.test(trimmed)) continue;
                 let match;
@@ -218,26 +217,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
             if (fallbackCandidates.length > 0) {
-                console.log('Importi trovati nelle ultime 8 righe:', fallbackCandidates);
+                console.log('Importi trovati su tutte le righe non escluse:', fallbackCandidates);
                 fallbackCandidates.sort((a, b) => parseValueToFloat(b) - parseValueToFloat(a));
-                amounts.push({ value: fallbackCandidates[0], priority: 2, lineContext: 'fallback ultime righe' });
+                amounts.push({ value: fallbackCandidates[0], priority: 2, lineContext: 'fallback tutte le righe' });
             } else {
-                console.log('Nessun importo trovato nelle ultime 8 righe utili.');
-            }
-        }
-        // Se ancora nulla, fallback classico: prendi l'ultimo importo (più a destra) su una riga non esclusa
-        if (amounts.length === 0) {
-            for (const l of lines) {
-                const trimmed = l.trim();
-                if (!trimmed || excludeKeywords.test(trimmed)) continue;
-                let match;
-                let fallbackAmounts = [];
-                while ((match = amountRegex.exec(trimmed)) !== null) {
-                    fallbackAmounts.push(match[1]);
-                }
-                if (fallbackAmounts.length > 0) {
-                    amounts.push({ value: fallbackAmounts[fallbackAmounts.length - 1], priority: 3, lineContext: trimmed });
-                }
+                console.log('Nessun importo trovato su tutte le righe utili.');
             }
         }
         if (amounts.length > 0) {
