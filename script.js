@@ -225,11 +225,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.log('Nessun importo trovato su tutte le righe utili.');
             }
         }
+        // Logga tutte le righe che contengono almeno una cifra
+        const numericLines = lines.filter(l => /\d/.test(l));
+        console.log('Righe con numeri trovate nell\'OCR:', numericLines);
+
         if (amounts.length > 0) {
             const bestPriority = Math.min(...amounts.map(a => a.priority));
             const candidates = amounts.filter(a => a.priority === bestPriority);
             candidates.sort((a, b) => parseValueToFloat(b.value) - parseValueToFloat(a.value));
             let bestAmountStr = candidates[0].value;
+            // Log più chiari per i candidati importo
+            console.log('Candidati importo (tutti):', amounts);
+            console.log('Candidati importo (priorità migliore):', candidates);
+            console.log('Importo selezionato:', bestAmountStr, 'dalla riga:', candidates[0].lineContext);
             newItem.importo = bestAmountStr.replace(/\.(?=\d{3}(?:,|$))/g, '').replace(',', '.');
             newItem.type = "Spesa";
         }
