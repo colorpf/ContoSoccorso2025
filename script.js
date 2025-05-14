@@ -163,7 +163,8 @@ document.addEventListener('DOMContentLoaded', () => {
             /PAGATO/i
         ];
         // Modifica: accetta anche importi con spazio dopo la virgola o il punto (es. 25, 80)
-        const amountRegex = /(\d{1,3}(?:[.,]\d{3})*[.,]\s?\d{2})\b/g;
+        // Regex più tollerante: accetta spazi e caratteri extra dopo i decimali
+        const amountRegex = /(\d{1,3}(?:[.,]\d{3})*[.,]\s?\d{1,2})/g;
         const excludeKeywords = /IVA|ALIQUOTA|IMPOSTA|TAX|SCONTO|RESTO|CREDITO|SUBTOTALE|RIEPILOGO\s+ALIQUOTE|BUONO|TRONCARE|NON\s+RISCOSSO|NON\s+PAGATO|CODICE|ARTICOLO|TEL\.|P\.IVA|C\.F\.|SCONTRINO\s+N\.|DOC\.|OPERAZIONE\s+N\./i;
 
         // Cerca con priorità 1 (parole chiave forti) e nelle 5 righe successive
@@ -239,7 +240,9 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log('Candidati importo (tutti):', amounts);
             console.log('Candidati importo (priorità migliore):', candidates);
             console.log('Importo selezionato:', bestAmountStr, 'dalla riga:', candidates[0].lineContext);
-            newItem.importo = bestAmountStr.replace(/\.(?=\d{3}(?:,|$))/g, '').replace(',', '.');
+            // Pulizia: prendi solo la parte numerica valida (rimuovi caratteri non numerici/virgola/punto/spazio in coda)
+            bestAmountStr = bestAmountStr.replace(/[^\d.,\s]/g, '').trim();
+            newItem.importo = bestAmountStr.replace(/\.(?=\d{3}(?:,|$))/g, '').replace(',', '.').replace(/\s/g, '');
             newItem.type = "Spesa";
         }
         // --- FINE LOGICA IMPORTO ---
