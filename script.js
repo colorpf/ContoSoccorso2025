@@ -74,6 +74,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const worker = await Tesseract.createWorker('ita', 1, {
+                langPath: './tessdata', // <--- MODIFICA QUI: Aggiungi questa riga
                 logger: m => {
                     console.log(m);
                     if (m.status === 'recognizing text') {
