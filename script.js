@@ -161,7 +161,8 @@ document.addEventListener('DOMContentLoaded', () => {
             /IMPORTO/i,
             /PAGATO/i
         ];
-        const amountRegex = /(\d{1,3}(?:[.,]\d{3})*[.,]\d{2})\b/g;
+        // Modifica: accetta anche importi con spazio dopo la virgola o il punto (es. 25, 80)
+        const amountRegex = /(\d{1,3}(?:[.,]\d{3})*[.,]\s?\d{2})\b/g;
         const excludeKeywords = /IVA|ALIQUOTA|IMPOSTA|TAX|SCONTO|RESTO|CREDITO|SUBTOTALE|RIEPILOGO\s+ALIQUOTE|BUONO|TRONCARE|NON\s+RISCOSSO|NON\s+PAGATO|CODICE|ARTICOLO|TEL\.|P\.IVA|C\.F\.|SCONTRINO\s+N\.|DOC\.|OPERAZIONE\s+N\./i;
 
         // Cerca con priorità 1 (parole chiave forti) e nelle 5 righe successive
