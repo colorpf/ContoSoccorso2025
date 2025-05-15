@@ -167,12 +167,29 @@ document.addEventListener('DOMContentLoaded', () => {
         const amountRegex = /(\d{1,3}(?:[.,]\d{3})*[.,]\s?\d{1,2})/g;
         const excludeKeywords = /IVA|ALIQUOTA|IMPOSTA|TAX|SCONTO|RESTO|CREDITO|SUBTOTALE|RIEPILOGO\s+ALIQUOTE|BUONO|TRONCARE|NON\s+RISCOSSO|NON\s+PAGATO|CODICE|ARTICOLO|TEL\.|P\.IVA|C\.F\.|SCONTRINO\s+N\.|DOC\.|OPERAZIONE\s+N\./i;
 
+        // Tenta di estrarre descrizione dal logo (prime 3 righe, solo maiuscole e spazi)
+        {
+            const logoPattern = /^[A-ZÀ-Ÿ\d'&-]{2,}(?:\s+[A-ZÀ-Ÿ\d'&-]{2,})+$/;
+            for (let i = 0; i < Math.min(lines.length, 3); i++) {
+                const l = lines[i].trim();
+                if (logoPattern.test(l)) {
+                    newItem.descrizione = l;
+                    break;
+                }
+            }
+        }
+
         // Cerca con priorità 1 (parole chiave forti) e nelle 5 righe successive
-        for (let i = 0; i < lines.length; i++) {
+        outer: for (let i = 0; i < lines.length; i++) {
             const trimmedLine = lines[i].trim();
             if (!trimmedLine) continue;
+            // se contiene direttamente un numero dopo 'Totale'
+            const totalCapture = trimmedLine.match(/(?:TOTALE.*?)(\d{1,3}(?:[.,]\s?\d{1,2}))/i);
+            if (totalCapture) {
+                amounts.push({ value: totalCapture[1], priority: 1, lineContext: trimmedLine });
+                break outer;
+            }
             let match;
-            let foundKeyword = false;
             for (const kw of totalKeywords) {
                 if (kw.test(trimmedLine)) {
                     foundKeyword = true;
