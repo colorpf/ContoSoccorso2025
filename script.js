@@ -189,12 +189,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 amounts.push({ value: totalCapture[1], priority: 1, lineContext: trimmedLine });
                 break outer;
             }
-            let match;
+            let foundKeyword = false;  // Aggiungiamo questa variabile mancante
             for (const kw of totalKeywords) {
                 if (kw.test(trimmedLine)) {
                     foundKeyword = true;
                     let lastAmount = null;
                     let allAmounts = [];
+                    
+                    // Reset regex lastIndex per ogni nuova scansione
+                    amountRegex.lastIndex = 0;
+                    
                     while ((match = amountRegex.exec(trimmedLine)) !== null) {
                         allAmounts.push(match[1]);
                     }
@@ -208,6 +212,10 @@ document.addEventListener('DOMContentLoaded', () => {
                             if (!nextLine) continue;
                             let nextMatch;
                             let nextAmounts = [];
+                            
+                            // Reset regex lastIndex per ogni nuova scansione
+                            amountRegex.lastIndex = 0;
+                            
                             while ((nextMatch = amountRegex.exec(nextLine)) !== null) {
                                 nextAmounts.push(nextMatch[1]);
                             }
@@ -266,7 +274,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // --- LOGICA DESCRIZIONE MIGLIORATA ---
         let specificStoreFound = false;
-        if (text.match(/LIDL/i)) {
+        // Aggiungiamo Spin alla lista dei negozi riconosciuti
+        if (text.match(/SPIN\b|EURO\s*SPIN/i)) {
+            newItem.categoria = "Spesa Alimentare";
+            newItem.descrizione = "EURO SPIN";
+            specificStoreFound = true;
+        } else if (text.match(/LIDL/i)) {
             newItem.categoria = "Spesa Alimentare";
             newItem.descrizione = "LIDL";
             specificStoreFound = true;
