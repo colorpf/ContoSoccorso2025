@@ -193,39 +193,49 @@ document.addEventListener('DOMContentLoaded', () => {
             for (const kw of totalKeywords) {
                 if (kw.test(trimmedLine)) {
                     foundKeyword = true;
-                    let lastAmount = null;
-                    let allAmounts = [];
                     
-                    // Reset regex lastIndex per ogni nuova scansione
-                    amountRegex.lastIndex = 0;
-                    
-                    while ((match = amountRegex.exec(trimmedLine)) !== null) {
-                        allAmounts.push(match[1]);
+                    let amountsOnThisLine = [];
+                    let matchOnCurrentLine;
+                    amountRegex.lastIndex = 0; // Reset regex for this line
+                    while ((matchOnCurrentLine = amountRegex.exec(trimmedLine)) !== null) {
+                        amountsOnThisLine.push(matchOnCurrentLine[1]);
                     }
-                    if (allAmounts.length > 0) {
-                        lastAmount = allAmounts[allAmounts.length - 1];
-                        amounts.push({ value: lastAmount, priority: 1, lineContext: trimmedLine });
+
+                    if (amountsOnThisLine.length > 0) {
+                        // Sort amounts found on this line by numeric value, descending, and take the largest.
+                        amountsOnThisLine.sort((a, b) => parseValueToFloat(b) - parseValueToFloat(a));
+                        amounts.push({ value: amountsOnThisLine[0], priority: 1, lineContext: trimmedLine });
                     } else {
-                        // Cerca la prima riga successiva (anche se è solo un numero) che contiene almeno un importo (fino a 5 righe dopo)
+                        // Keyword found, but no amount on THIS line. Search up to 5 subsequent lines.
                         for (let j = 1; j <= 5 && (i + j) < lines.length; j++) {
                             const nextLine = lines[i + j].trim();
                             if (!nextLine) continue;
-                            let nextMatch;
-                            let nextAmounts = [];
-                            
-                            // Reset regex lastIndex per ogni nuova scansione
-                            amountRegex.lastIndex = 0;
-                            
-                            while ((nextMatch = amountRegex.exec(nextLine)) !== null) {
-                                nextAmounts.push(nextMatch[1]);
+
+                            // If this subsequent line contains an excludeKeyword, skip it.
+                            if (excludeKeywords.test(nextLine)) {
+                                console.log(`Import search: Skipping nextLine due to excludeKeyword: "${nextLine}"`);
+                                continue;
                             }
-                            if (nextAmounts.length > 0) {
-                                amounts.push({ value: nextAmounts[nextAmounts.length - 1], priority: 1, lineContext: nextLine });
-                                break;
+
+                            let amountsInNextLine = [];
+                            let matchInNextLine;
+                            amountRegex.lastIndex = 0; // Reset regex for this nextLine
+                            while ((matchInNextLine = amountRegex.exec(nextLine)) !== null) {
+                                amountsInNextLine.push(matchInNextLine[1]);
+                            }
+
+                            if (amountsInNextLine.length > 0) {
+                                // Sort amounts found on this subsequent line by numeric value, descending, and take the largest.
+                                amountsInNextLine.sort((a, b) => parseValueToFloat(b) - parseValueToFloat(a));
+                                amounts.push({ value: amountsInNextLine[0], priority: 1, lineContext: nextLine });
+                                break; // Found an amount in subsequent lines, stop searching further lines for this keyword.
                             }
                         }
                     }
-                    break;
+                    // If a keyword match led to finding an amount (either on current line or next ones),
+                    // break from the totalKeywords loop for this trimmedLine.
+                    // This prioritizes the first keyword in totalKeywords that yields a result for the current line.
+                    break; 
                 }
             }
         }
