@@ -183,62 +183,69 @@ document.addEventListener('DOMContentLoaded', () => {
         outer: for (let i = 0; i < lines.length; i++) {
             const trimmedLine = lines[i].trim();
             if (!trimmedLine) continue;
-            // se contiene direttamente un numero dopo 'Totale'
-            const totalCapture = trimmedLine.match(/(?:TOTALE.*?)(\d{1,3}(?:[.,]\s?\d{1,2}))/i);
-            if (totalCapture) {
-                amounts.push({ value: totalCapture[1], priority: 1, lineContext: trimmedLine });
-                break outer;
-            }
-            let foundKeyword = false;  // Aggiungiamo questa variabile mancante
+
+            // Blocco totalCapture rimosso per una gestione più granulare tramite totalKeywords
+
             for (const kw of totalKeywords) {
                 if (kw.test(trimmedLine)) {
-                    foundKeyword = true;
-                    
-                    let amountsOnThisLine = [];
-                    let matchOnCurrentLine;
-                    amountRegex.lastIndex = 0; // Reset regex for this line
-                    while ((matchOnCurrentLine = amountRegex.exec(trimmedLine)) !== null) {
-                        amountsOnThisLine.push(matchOnCurrentLine[1]);
+                    let foundAmountForThisKeywordIteration = false;
+
+                    // 1. Controlla gli importi sulla riga stessa della parola chiave
+                    let amountsOnKwLine = [];
+                    if (!excludeKeywords.test(trimmedLine)) {
+                        amountRegex.lastIndex = 0;
+                        let match;
+                        while ((match = amountRegex.exec(trimmedLine)) !== null) {
+                            amountsOnKwLine.push(match[1]);
+                        }
+
+                        if (amountsOnKwLine.length > 0) {
+                            amountsOnKwLine.sort((a, b) => parseValueToFloat(b) - parseValueToFloat(a));
+                            amounts.push({ value: amountsOnKwLine[0], priority: 1, lineContext: trimmedLine });
+                            foundAmountForThisKeywordIteration = true;
+                        }
+                    } else {
+                        console.log(`La riga della parola chiave "${trimmedLine}" contiene una excludeKeyword. Gli importi su questa riga sono ignorati per la parola chiave ${kw}.`);
                     }
 
-                    if (amountsOnThisLine.length > 0) {
-                        // Sort amounts found on this line by numeric value, descending, and take the largest.
-                        amountsOnThisLine.sort((a, b) => parseValueToFloat(b) - parseValueToFloat(a));
-                        amounts.push({ value: amountsOnThisLine[0], priority: 1, lineContext: trimmedLine });
-                    } else {
-                        // Keyword found, but no amount on THIS line. Search up to 5 subsequent lines.
-                        for (let j = 1; j <= 5 && (i + j) < lines.length; j++) {
+                    // 2. Se nessun importo è stato trovato/accettato sulla riga della parola chiave,
+                    // cerca nelle righe successive.
+                    if (!foundAmountForThisKeywordIteration) {
+                        for (let j = 1; j <= 5; j++) { // Cerca fino a 5 righe successive
+                            if ((i + j) >= lines.length) break;
                             const nextLine = lines[i + j].trim();
                             if (!nextLine) continue;
 
-                            // If this subsequent line contains an excludeKeyword, skip it.
                             if (excludeKeywords.test(nextLine)) {
-                                console.log(`Import search: Skipping nextLine due to excludeKeyword: "${nextLine}"`);
+                                console.log(`Ricerca importo: la riga successiva "${nextLine}" è saltata a causa di una excludeKeyword.`);
                                 continue;
                             }
 
                             let amountsInNextLine = [];
-                            let matchInNextLine;
-                            amountRegex.lastIndex = 0; // Reset regex for this nextLine
-                            while ((matchInNextLine = amountRegex.exec(nextLine)) !== null) {
-                                amountsInNextLine.push(matchInNextLine[1]);
+                            amountRegex.lastIndex = 0;
+                            let matchNext;
+                            while ((matchNext = amountRegex.exec(nextLine)) !== null) {
+                                amountsInNextLine.push(matchNext[1]);
                             }
 
                             if (amountsInNextLine.length > 0) {
-                                // Sort amounts found on this subsequent line by numeric value, descending, and take the largest.
                                 amountsInNextLine.sort((a, b) => parseValueToFloat(b) - parseValueToFloat(a));
                                 amounts.push({ value: amountsInNextLine[0], priority: 1, lineContext: nextLine });
-                                break; // Found an amount in subsequent lines, stop searching further lines for this keyword.
+                                foundAmountForThisKeywordIteration = true;
+                                break; // Trovato importo nelle righe successive, interrompi il loop j
                             }
                         }
                     }
-                    // If a keyword match led to finding an amount (either on current line or next ones),
-                    // break from the totalKeywords loop for this trimmedLine.
-                    // This prioritizes the first keyword in totalKeywords that yields a result for the current line.
-                    break; 
-                }
-            }
-        }
+
+                    // Se questa parola chiave (kw) ha portato a trovare un importo,
+                    // interrompi il loop totalKeywords per questa trimmedLine.
+                    if (foundAmountForThisKeywordIteration) {
+                        break; // Interrompi `for (const kw of totalKeywords)`
+                    }
+                } // fine if kw.test(trimmedLine)
+            } // fine for (const kw of totalKeywords)
+        } // fine outer: for (let i = 0; i < lines.length; i++)
+
         // Se non hai trovato nulla con priorità 1, cerca fallback su tutte le righe non escluse
         if (amounts.length === 0) {
             let fallbackCandidates = [];
