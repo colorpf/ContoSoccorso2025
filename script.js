@@ -174,7 +174,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Estrazione descrizione (invariata)
         {
-            const logoPattern = /^[A-ZÀ-Ÿ\d'-&]{2,}(?:\s+[A-ZÀ-Ÿ\d'-&]{2,})+$/;
+            const logoPattern = /^[A-ZÀ-Ÿ\d'&\-]{2,}(?:\s+[A-ZÀ-Ÿ\d'&\-]{2,})+$/; // Trattino escapato
             for (let i = 0; i < Math.min(lines.length, 3); i++) {
                 const l = lines[i].trim();
                 if (logoPattern.test(l)) {
