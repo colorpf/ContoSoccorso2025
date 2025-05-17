@@ -145,7 +145,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const normalized = valStr.replace(/\\.(?=\\d{3}(?:,|$))/g, '').replace(',', '.');
             return parseFloat(normalized) || 0;
         };
-        const lines = text.split('\\n');
+        const lines = text.split('\n'); // THIS WILL BE CORRECTED
         
         // Configurazione delle parole chiave con priorità (0 è la più alta)
         const totalKeywordsConfig = [
@@ -170,7 +170,7 @@ document.addEventListener('DOMContentLoaded', () => {
         ];
 
         const amountRegex = /(\\d{1,3}(?:[.,]\\d{3})*[.,]\\s?\\d{1,2})/g;
-        const excludeKeywords = /IVA|ALIQUOTA|IMPOSTA|TAX|SCONTO|RESTO|CREDITO|SUBTOTALE|RIEPILOGO\\s+ALIQUOTE|BUONO|TRONCARE|NON\\s+RISCOSSO|NON\\s+PAGATO|CODICE|ARTICOLO|TEL\\.|P\\.IVA|C\\.F\\.|SCONTRINO\\s+N\\.|DOC\\.|OPERAZIONE\\s+N\\./i;
+        const excludeKeywords = /IVA|ALIQUOTA|IMPOSTA|TAX|SCONTO|RESTO|CREDITO|SUBTOTALE|RIEPILOGO\\s+ALIQUOTE|BUONO|TRONCARE|NON\\s+RISCOSSO|NON\\s+PAGATO|CODICE|ARTICOLO|TEL\\.|P\\.IVA|C\\.F\\.|SCONTRINO\\s+N\\.|DOC\\.|OPERAZIONE\\s+N\\./i; // THIS WILL BE UPDATED
 
         // Tenta di estrarre descrizione dal logo (prime 3 righe, solo maiuscole e spazi)
         {
@@ -211,236 +211,97 @@ document.addEventListener('DOMContentLoaded', () => {
                         console.log(`La riga della parola chiave "${trimmedLine}" contiene una excludeKeyword. Gli importi su questa riga sono ignorati per la parola chiave ${kwConfig.regex}.`);
                     }
 
-                    // 2. Se nessun importo è stato trovato/accettato sulla riga della parola chiave,
-                    // cerca nelle righe successive.
+                    // 2. Se non abbiamo trovato un importo sulla stessa riga, controlla nelle 5 righe successive
                     if (!foundAmountForThisKeywordIteration) {
-                        for (let j = 1; j <= 5; j++) { 
-                            if ((i + j) >= lines.length) break;
+                        for (let j = 1; j <= 5 && i + j < lines.length; j++) {
                             const nextLine = lines[i + j].trim();
                             if (!nextLine) continue;
 
-                            if (excludeKeywords.test(nextLine)) {
-                                console.log(`Ricerca importo: la riga successiva "${nextLine}" è saltata a causa di una excludeKeyword.`);
-                                continue;
-                            }
-
-                            let amountsInNextLine = [];
-                            amountRegex.lastIndex = 0;
-                            let matchNext;
-                            while ((matchNext = amountRegex.exec(nextLine)) !== null) {
-                                amountsInNextLine.push(matchNext[1]);
-                            }
-
-                            if (amountsInNextLine.length > 0) {
-                                amountsInNextLine.sort((a, b) => parseValueToFloat(b) - parseValueToFloat(a));
-                                amounts.push({ value: amountsInNextLine[0], priority: kwConfig.priority, lineContext: nextLine });
-                                foundAmountForThisKeywordIteration = true;
-                                break; 
+                            if (!excludeKeywords.test(nextLine)) {
+                                amountRegex.lastIndex = 0;
+                                let match;
+                                while ((match = amountRegex.exec(nextLine)) !== null) {
+                                    amounts.push({ value: match[1], priority: kwConfig.priority, lineContext: nextLine });
+                                }
+                            } else {
+                                console.log(`La riga "${nextLine}" contiene una excludeKeyword. Gli importi su questa riga sono ignorati.`);
                             }
                         }
                     }
 
-                    if (foundAmountForThisKeywordIteration) {
-                        break; 
+                    // 3. Se ancora non abbiamo trovato un importo, possiamo fare un fallback su tutte le righe non escluse
+                    if (amounts.length === 0) {
+                        for (let j = 0; j < lines.length; j++) {
+                            const anyLine = lines[j].trim();
+                            if (!anyLine) continue;
+
+                            if (!excludeKeywords.test(anyLine)) {
+                                amountRegex.lastIndex = 0;
+                                let match;
+                                while ((match = amountRegex.exec(anyLine)) !== null) {
+                                    amounts.push({ value: match[1], priority: kwConfig.priority, lineContext: anyLine });
+                                }
+                            }
+                        }
                     }
-                } 
-            } 
-        } 
 
-        // Se non hai trovato nulla con le priorità definite, cerca fallback su tutte le righe non escluse
-        if (amounts.length === 0) {
-            let fallbackCandidates = [];
-            for (const l of lines) {
-                const trimmed = l.trim();
-                if (!trimmed || excludeKeywords.test(trimmed)) continue;
-                amountRegex.lastIndex = 0; // Reset regex for each line in fallback
-                let match;
-                let allAmountsInLine = []; // Collect all amounts in this specific line
-                while ((match = amountRegex.exec(trimmed)) !== null) {
-                    allAmountsInLine.push(match[1]);
-                }
-                if (allAmountsInLine.length > 0) {
-                    // Sort amounts in this line and take the largest, then add to fallbackCandidates
-                    allAmountsInLine.sort((a,b) => parseValueToFloat(b) - parseValueToFloat(a));
-                    fallbackCandidates.push(allAmountsInLine[0]);
-                }
-            }
-            if (fallbackCandidates.length > 0) {
-                console.log('Importi trovati su tutte le righe non escluse (fallback):', fallbackCandidates);
-                fallbackCandidates.sort((a, b) => parseValueToFloat(b) - parseValueToFloat(a));
-                amounts.push({ value: fallbackCandidates[0], priority: 4, lineContext: 'fallback tutte le righe' }); // Priorità di fallback: 4
-            } else {
-                console.log('Nessun importo trovato su tutte le righe utili.');
-            }
-        }
-        // Logga tutte le righe che contengono almeno una cifra
-        const numericLines = lines.filter(l => /\d/.test(l));
-        console.log('Righe con numeri trovate nell\'OCR:', numericLines);
+                    // Ordina gli importi trovati per priorità e valore
+                    amounts.sort((a, b) => {
+                        if (a.priority !== b.priority) {
+                            return a.priority - b.priority;
+                        }
+                        return parseValueToFloat(b.value) - parseValueToFloat(a.value);
+                    });
 
-        if (amounts.length > 0) {
-            const bestPriority = Math.min(...amounts.map(a => a.priority));
-            const candidates = amounts.filter(a => a.priority === bestPriority);
-            candidates.sort((a, b) => parseValueToFloat(b.value) - parseValueToFloat(a.value));
-            let bestAmountStr = candidates[0].value;
-            // Log più chiari per i candidati importo
-            console.log('Candidati importo (tutti):', amounts);
-            console.log('Candidati importo (priorità migliore):', candidates);
-            console.log('Importo selezionato:', bestAmountStr, 'dalla riga:', candidates[0].lineContext);
-            // Pulizia: prendi solo la parte numerica valida (rimuovi caratteri non numerici/virgola/punto/spazio in coda)
-            bestAmountStr = bestAmountStr.replace(/[^\d.,\s]/g, '').trim();
-            newItem.importo = bestAmountStr.replace(/\.(?=\d{3}(?:,|$))/g, '').replace(',', '.').replace(/\s/g, '');
-            newItem.type = "Spesa";
-        }
-        // --- FINE LOGICA IMPORTO ---
+                    // Prendi il miglior importo trovato
+                    if (amounts.length > 0) {
+                        newItem.importo = amounts[0].value;
+                        console.log(`Importo trovato: ${newItem.importo} (linea: "${amounts[0].lineContext}")`);
+                    } else {
+                        console.log("Nessun importo trovato dopo la ricerca nelle righe successive.");
+                    }
 
-        // --- LOGICA DESCRIZIONE MIGLIORATA ---
-        let specificStoreFound = false;
-        // Aggiungiamo Spin alla lista dei negozi riconosciuti
-        if (text.match(/SPIN\b|EURO\s*SPIN/i)) {
-            newItem.categoria = "Spesa Alimentare";
-            newItem.descrizione = "EURO SPIN";
-            specificStoreFound = true;
-        } else if (text.match(/LIDL/i)) {
-            newItem.categoria = "Spesa Alimentare";
-            newItem.descrizione = "LIDL";
-            specificStoreFound = true;
-        } else if (text.match(/CONAD/i)) {
-            newItem.categoria = "Spesa Alimentare";
-            newItem.descrizione = "CONAD";
-            specificStoreFound = true;
-        } else if (text.match(/ESSELUNGA/i)) {
-            newItem.categoria = "Spesa Alimentare";
-            newItem.descrizione = "ESSELUNGA";
-            specificStoreFound = true;
-        } else if (text.match(/\bBRICO\b/i) && !text.match(/BRICOMAN|LEROY MERLIN|BRICOCENTER/i)) {
-            newItem.categoria = "Fai da te";
-            newItem.descrizione = "Brico";
-            specificStoreFound = true;
-        } else if (text.match(/TECNOMAT|BRICOMAN/i)) {
-            newItem.categoria = "Fai da te";
-            newItem.descrizione = text.match(/TECNOMAT/i) ? "TECNOMAT" : "BRICOMAN";
-            specificStoreFound = true;
-        } else if (text.match(/LEROY MERLIN/i)) {
-            newItem.categoria = "Fai da te";
-            newItem.descrizione = "Leroy Merlin";
-            specificStoreFound = true;
-        } else if (text.match(/BRICOCENTER/i)) {
-            newItem.categoria = "Fai da te";
-            newItem.descrizione = "Bricocenter";
-            specificStoreFound = true;
-        } else if (text.match(/MCDONALD'?S?/i)) {
-            newItem.categoria = "Pasti Fuori";
-            newItem.descrizione = "McDonald's";
-            specificStoreFound = true;
-        }
-        // ...altre regole...
-        if (!specificStoreFound) {
-            if (text.match(/SUPERMERCATO|ALIMENTARI/i)) {
-                newItem.categoria = "Spesa Alimentare";
-                newItem.descrizione = "Supermercato";
-            } else if (text.match(/RISTORANTE/i)) {
-                newItem.categoria = "Pasti Fuori";
-                newItem.descrizione = "Ristorante";
-            } else if (text.match(/PIZZERIA/i)) {
-                newItem.categoria = "Pasti Fuori";
-                newItem.descrizione = "Pizzeria";
-            } else if (text.match(/\bBAR\b/i) && !text.match(/BARCODE/i)) {
-                newItem.categoria = "Pasti Fuori";
-                newItem.descrizione = "Bar";
-            } else if (text.match(/CAFFÈ|CAFFETTERIA/i)) {
-                newItem.categoria = "Pasti Fuori";
-                newItem.descrizione = text.match(/CAFFETTERIA/i) ? "Caffetteria" : "Caffè";
-            } else if (text.match(/FARMACIA/i)) {
-                newItem.categoria = "Salute";
-                newItem.descrizione = "Farmacia";
-            } else if (text.match(/MEDICINALI|PRODOTTI SANITARI/i)) {
-                newItem.categoria = "Salute";
-                newItem.descrizione = "Prodotti Salute";
-            }
-        }
-        // Fallback descrizione: prima riga significativa
-        if (newItem.descrizione === "Scontrino" && newItem.categoria === "Scontrino") {
-            const textLines = text.split('\n');
-            let potentialDescription = "";
-            for (let i = 0; i < Math.min(textLines.length, 6); i++) {
-                const cleanedLine = textLines[i].replace(/\s+/g, ' ').trim();
-                if (cleanedLine.length > 4 && cleanedLine.length < 50 &&
-                    (cleanedLine.match(/[a-zA-Z]/g) || []).length >= cleanedLine.length * 0.4 &&
-                    !cleanedLine.match(/VIA|PIAZZA|CORSO|P\.IVA|C\.F\.|TEL\.|CAP\s\d{5}/i) &&
-                    !cleanedLine.match(/^\d[\d\s\.,\-:\/]*$/) &&
-                    !cleanedLine.toLowerCase().includes("scontrino") &&
-                    !cleanedLine.toLowerCase().includes("documento n.") &&
-                    !cleanedLine.toLowerCase().includes("totale")) {
-                    potentialDescription = cleanedLine;
-                    break;
+                    // Una volta trovata un'importo valido, possiamo fermarci
+                    break outer;
                 }
             }
-            if (potentialDescription) {
-                newItem.descrizione = potentialDescription;
-            } else {
-                const primeRighe = textLines.filter(l => l.trim().length > 3).slice(0, 2).join(' ').trim();
-                newItem.descrizione = primeRighe.substring(0, 50) || "Scontrino";
-            }
         }
-        newItem.descrizione = newItem.descrizione.replace(/^[^a-zA-Z0-9À-ÿ]+|[^a-zA-Z0-9À-ÿ]+$/g, '').trim();
-        if (newItem.descrizione.length === 0) {
-            newItem.descrizione = "Scontrino";
-        }
-        // --- FINE LOGICA DESCRIZIONE ---
 
-        console.log("Dati estratti dallo scontrino (processati):", newItem);
         return newItem;
     }
 
-    // Funzione per aggiungere una riga alla tabella (ordine: Data, Categoria, Tipo, Importo, Descrizione, Elimina)
-    function addRowToTable(item, rowIndex = 0) {
-        if (!recordedDataTableBody) {
-            console.error("Elemento recordedDataBody non trovato!");
-            return;
+    function addRowToTable(dataItem) {
+        const row = document.createElement('tr');
+
+        const tipoCell = document.createElement('td');
+        tipoCell.textContent = dataItem.type;
+        row.appendChild(tipoCell);
+
+        const dataCell = document.createElement('td');
+        dataCell.textContent = dataItem.data;
+        row.appendChild(dataCell);
+
+        const importoCell = document.createElement('td');
+        importoCell.textContent = dataItem.importo;
+        row.appendChild(importoCell);
+
+        const categoriaCell = document.createElement('td');
+        categoriaCell.textContent = dataItem.categoria;
+        row.appendChild(categoriaCell);
+
+        const descrizioneCell = document.createElement('td');
+        descrizioneCell.textContent = dataItem.descrizione;
+        row.appendChild(descrizioneCell);
+
+        recordedDataTableBody.appendChild(row);
+    }
+
+    clearListButton.addEventListener('click', () => {
+        if (confirm('Sei sicuro di voler cancellare tutti i dati registrati?')) {
+            localStorage.removeItem(storageKey);
+            recordedDataTableBody.innerHTML = '';
+            currentData = [];
+            statusDiv.textContent = 'Tutti i dati sono stati rimossi.';
         }
-        const row = recordedDataTableBody.insertRow(rowIndex); // Inserisce in cima
-
-        const cellDate = row.insertCell();
-        const cellCategory = row.insertCell();
-        const cellType = row.insertCell();
-        const cellAmount = row.insertCell();
-        const cellDescription = row.insertCell();
-        const cellDelete = row.insertCell();
-
-        cellDate.textContent = item.data;
-        cellCategory.textContent = item.categoria;
-        cellType.textContent = item.type;
-        cellAmount.textContent = parseFloat(item.importo).toFixed(2);
-        cellDescription.textContent = item.descrizione;
-
-        const deleteButton = document.createElement('button');
-        deleteButton.textContent = 'Elimina';
-        deleteButton.classList.add('navy-btn'); // Usa la classe per lo stile blu
-        deleteButton.onclick = function() {
-            const indexToRemove = currentData.indexOf(item);
-            if (indexToRemove > -1) {
-                currentData.splice(indexToRemove, 1);
-                saveData(currentData);
-                recordedDataTableBody.deleteRow(row.rowIndex -1); // -1 perché l'indice della riga è rispetto al tbody
-                 statusDiv.textContent = `Voce "${item.descrizione}" eliminata.`;
-            }
-        };
-        cellDelete.appendChild(deleteButton);
-    }
-    
-    if (clearListButton) {
-        clearListButton.addEventListener('click', () => {
-            if (confirm("Sei sicuro di voler cancellare tutti i dati registrati per l'anno corrente?")) {
-                currentData = [];
-                saveData(currentData);
-                while (recordedDataTableBody.firstChild) {
-                    recordedDataTableBody.removeChild(recordedDataTableBody.firstChild);
-                }
-                statusDiv.textContent = "Lista dati cancellata.";
-            }
-        });
-    }
-
-    // ... Qui andrebbe il resto del tuo codice, come la gestione del riconoscimento vocale, invio dati, ecc.
-    // Assicurati che le funzioni come parseSpeechResult, inviaDatiAlFoglio siano definite se le chiami.
+    });
 });
