@@ -141,11 +141,8 @@ document.addEventListener('DOMContentLoaded', () => {
         let potentialAmounts = [];
         const parseValueToFloat = (valStr) => {
             if (!valStr) return 0;
-            // 1. Rimuovi tutti gli spazi
             let cleanedValStr = valStr.replace(/\s/g, '');
-            // 2. Rimuovi i punti usati come separatori delle migliaia (es. 1.234,56 -> 1234,56)
             cleanedValStr = cleanedValStr.replace(/\.(?=\d{3}(?:,|$))/g, '');
-            // 3. Sostituisci la virgola decimale con un punto (es. 1234,56 -> 1234.56)
             const normalized = cleanedValStr.replace(',', '.');
             return parseFloat(normalized) || 0;
         };
@@ -177,7 +174,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Estrazione descrizione (invariata)
         {
-            const logoPattern = /^[A-ZÀ-Ÿ\d'&-]{2,}(?:\s+[A-ZÀ-Ÿ\d'&-]{2,})+$/;
+            const logoPattern = /^[A-ZÀ-Ÿ\d'-&]{2,}(?:\s+[A-ZÀ-Ÿ\d'-&]{2,})+$/;
             for (let i = 0; i < Math.min(lines.length, 3); i++) {
                 const l = lines[i].trim();
                 if (logoPattern.test(l)) {
@@ -203,31 +200,47 @@ document.addEventListener('DOMContentLoaded', () => {
                                 value: match[1],
                                 priority: kwConfig.priority,
                                 lineContext: trimmedLine,
-                                debugSource: `Keyword sulla stessa riga: ${kwConfig.regex.toString()}`
+                                debugSource: `Keyword sulla stessa riga: ${kwConfig.regex.toString()} (prio ${kwConfig.priority})`
                             });
                         }
                     } else {
                         console.log(`Riga "${trimmedLine}" contiene keyword ${kwConfig.regex.toString()} ma anche una excludeKeyword. Importi ignorati da questa riga per questa keyword.`);
                     }
 
-                    // Cerca importi nelle 5 righe successive
+                    // Cerca importi nelle 5 righe successive, con logica di priorità affinata
                     for (let j = 1; j <= 5 && (i + j) < lines.length; j++) {
                         const nextLine = lines[i + j].trim();
                         if (!nextLine) continue;
 
                         if (!excludeKeywords.test(nextLine)) {
                             amountRegex.lastIndex = 0;
-                            let match;
-                            while ((match = amountRegex.exec(nextLine)) !== null) {
+                            let matchAmount;
+                            while ((matchAmount = amountRegex.exec(nextLine)) !== null) {
+                                let amountInNextLine = matchAmount[1];
+                                // Default: priorità leggermente degradata rispetto alla keyword che ha iniziato la ricerca
+                                let priorityForNextLineAmount = kwConfig.priority + 1; 
+                                let sourceInfo = `Importo su riga ${i+j} (vicino a keyword '${kwConfig.regex.toString()}' su riga ${i})`;
+                                let nextLineHasOwnKeyword = false;
+
+                                // Controlla se 'nextLine' stessa contiene una keyword da totalKeywordsConfig
+                                for (const nextKwConfig of totalKeywordsConfig) {
+                                    if (nextKwConfig.regex.test(nextLine)) {
+                                        priorityForNextLineAmount = nextKwConfig.priority; // Usa la priorità della keyword specifica di nextLine
+                                        sourceInfo += ` - Match diretto su riga ${i+j} con keyword '${nextKwConfig.regex.toString()}' (prio ${nextKwConfig.priority})`;
+                                        nextLineHasOwnKeyword = true;
+                                        break; // Usa la priorità della prima/più specifica keyword trovata su nextLine
+                                    }
+                                }
+                                
                                 potentialAmounts.push({
-                                    value: match[1],
-                                    priority: kwConfig.priority, // Usa la priorità della keyword che ha attivato questa ricerca
+                                    value: amountInNextLine,
+                                    priority: priorityForNextLineAmount,
                                     lineContext: nextLine,
-                                    debugSource: `Keyword "${kwConfig.regex.toString()}" (riga ${i}), importo su riga successiva (${i+j})`
+                                    debugSource: sourceInfo
                                 });
                             }
                         } else {
-                             console.log(`Riga successiva "${nextLine}" (per keyword ${kwConfig.regex.toString()}) contiene una excludeKeyword. Importi ignorati.`);
+                             console.log(`Riga successiva "${nextLine}" (per keyword ${kwConfig.regex.toString()}) è esclusa.`);
                         }
                     }
                 }
@@ -239,6 +252,16 @@ document.addEventListener('DOMContentLoaded', () => {
         for (let i = 0; i < lines.length; i++) {
             const lineContent = lines[i].trim();
             if (!lineContent) continue;
+
+            // Evita di aggiungere come fallback importi già considerati dalle keyword (se la riga contiene una keyword)
+            let lineContainsTotalKeyword = false;
+            for (const kwConfig of totalKeywordsConfig) {
+                if (kwConfig.regex.test(lineContent)) {
+                    lineContainsTotalKeyword = true;
+                    break;
+                }
+            }
+            if (lineContainsTotalKeyword) continue; // Salta se la riga è già stata processata (o lo sarà) dalle keyword principali
 
             if (!excludeKeywords.test(lineContent)) {
                 amountRegex.lastIndex = 0;
@@ -254,25 +277,23 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         
-        // Rimuovi duplicati esatti (stesso valore, priorità, contesto, sorgente) prima dell'ordinamento
+        // Rimuovi duplicati (stesso valore, priorità, contesto) prima dell'ordinamento
         potentialAmounts = potentialAmounts.filter((amount, index, self) =>
             index === self.findIndex((t) => (
                 t.value === amount.value && 
                 t.priority === amount.priority && 
-                t.lineContext === amount.lineContext && 
-                t.debugSource === amount.debugSource
+                t.lineContext === amount.lineContext
             ))
         );
 
         // 3. Ordinamento e selezione finale
-        console.log("Importi potenziali PRIMA dell'ordinamento:", JSON.stringify(potentialAmounts, null, 2));
+        console.log("Importi potenziali PRIMA dell'ordinamento (dopo deduplica):", JSON.stringify(potentialAmounts, null, 2));
 
         if (potentialAmounts.length > 0) {
             potentialAmounts.sort((a, b) => {
                 if (a.priority !== b.priority) {
-                    return a.priority - b.priority; // Priorità più bassa (0) viene prima
+                    return a.priority - b.priority;
                 }
-                // Se la priorità è la stessa, preferisci l'importo maggiore
                 return parseValueToFloat(b.value) - parseValueToFloat(a.value);
             });
 
@@ -281,7 +302,6 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log(`Importo finale selezionato: ${newItem.importo} (Priorità: ${potentialAmounts[0].priority}, Valore: ${parseValueToFloat(potentialAmounts[0].value)}, Contesto: "${potentialAmounts[0].lineContext}", Sorgente: ${potentialAmounts[0].debugSource})`);
         } else {
             console.log("Nessun importo valido trovato dopo tutti i passaggi.");
-            // newItem.importo resta "0.00" come da default
         }
 
         return newItem;
