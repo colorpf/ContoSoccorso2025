@@ -142,30 +142,35 @@ document.addEventListener('DOMContentLoaded', () => {
         let amounts = [];
         const parseValueToFloat = (valStr) => {
             if (!valStr) return 0;
-            const normalized = valStr.replace(/\.(?=\d{3}(?:,|$))/g, '').replace(',', '.');
+            const normalized = valStr.replace(/\\.(?=\\d{3}(?:,|$))/g, '').replace(',', '.');
             return parseFloat(normalized) || 0;
         };
-        const lines = text.split('\n');
-        const totalKeywords = [
-            /TOTALE\s+COMPLESSIVO/i,
-            /TOTALE\s+EURO/i,
-            /TOTALE\s+EUR/i,
-            /TOTALE\s+SCONTRINO/i,
-            /TOTALE\s+DA\s+PAGARE/i,
-            /TOTALE\s+FATTURA/i,
-            /TOTALE/i,
-            /IMPORTO\s+PAGATO/i,
-            /NETTO\s+A\s+PAGARE/i,
-            /PAGAMENTO\s+CONTANTE/i,
-            /PAGAMENTO\s+ELETTRONICO/i,
-            /IMPORTO\s+DA\s+PAGARE/i,
-            /IMPORTO/i,
-            /PAGATO/i
+        const lines = text.split('\\n');
+        
+        // Configurazione delle parole chiave con priorità (0 è la più alta)
+        const totalKeywordsConfig = [
+            { regex: /TOTALE\\s+COMPLESSIVO/i, priority: 0 },
+            { regex: /TOTALE\\s+EURO/i, priority: 0 },
+            { regex: /TOTALE\\s+EUR/i, priority: 0 },
+            { regex: /TOTALE\\s+SCONTRINO/i, priority: 0 },
+            { regex: /TOTALE\\s+DA\\s+PAGARE/i, priority: 0 },
+            { regex: /NETTO\\s+A\\s+PAGARE/i, priority: 0 },
+            { regex: /TOTALE\\s+FATTURA/i, priority: 0 },
+
+            { regex: /PAGAMENTO\\s+ELETTRONICO/i, priority: 1 },
+            { regex: /IMPORTO\\s+PAGATO/i, priority: 1 }, // Potrebbe essere il totale o l'importo transato
+            { regex: /IMPORTO\\s+DA\\s+PAGARE/i, priority: 1 },
+
+            { regex: /TOTALE/i, priority: 2 }, // "TOTALE" generico
+
+            // Queste sono più rischiose e potrebbero non essere il totale finale
+            { regex: /PAGAMENTO\\s+CONTANTE/i, priority: 3 }, // Spesso l'importo dato dal cliente
+            { regex: /IMPORTO/i, priority: 3 }, // Molto generico
+            { regex: /PAGATO/i, priority: 3 }  // Molto generico
         ];
-        // Modifica: accetta anche importi con spazio dopo la virgola o il punto (es. 25, 80)
-        // Regex più tollerante: accetta spazi e caratteri extra dopo i decimali
-        const amountRegex = /(\d{1,3}(?:[.,]\d{3})*[.,]\s?\d{1,2})/g;
-        const excludeKeywords = /IVA|ALIQUOTA|IMPOSTA|TAX|SCONTO|RESTO|CREDITO|SUBTOTALE|RIEPILOGO\s+ALIQUOTE|BUONO|TRONCARE|NON\s+RISCOSSO|NON\s+PAGATO|CODICE|ARTICOLO|TEL\.|P\.IVA|C\.F\.|SCONTRINO\s+N\.|DOC\.|OPERAZIONE\s+N\./i;
+
+        const amountRegex = /(\\d{1,3}(?:[.,]\\d{3})*[.,]\\s?\\d{1,2})/g;
+        const excludeKeywords = /IVA|ALIQUOTA|IMPOSTA|TAX|SCONTO|RESTO|CREDITO|SUBTOTALE|RIEPILOGO\\s+ALIQUOTE|BUONO|TRONCARE|NON\\s+RISCOSSO|NON\\s+PAGATO|CODICE|ARTICOLO|TEL\\.|P\\.IVA|C\\.F\\.|SCONTRINO\\s+N\\.|DOC\\.|OPERAZIONE\\s+N\\./i;
 
         // Tenta di estrarre descrizione dal logo (prime 3 righe, solo maiuscole e spazi)
         {
@@ -179,15 +184,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // Cerca con priorità 1 (parole chiave forti) e nelle 5 righe successive
+        // Cerca con priorità definite in totalKeywordsConfig e nelle 5 righe successive
         outer: for (let i = 0; i < lines.length; i++) {
             const trimmedLine = lines[i].trim();
             if (!trimmedLine) continue;
 
-            // Blocco totalCapture rimosso per una gestione più granulare tramite totalKeywords
-
-            for (const kw of totalKeywords) {
-                if (kw.test(trimmedLine)) {
+            for (const kwConfig of totalKeywordsConfig) {
+                if (kwConfig.regex.test(trimmedLine)) {
                     let foundAmountForThisKeywordIteration = false;
 
                     // 1. Controlla gli importi sulla riga stessa della parola chiave
@@ -201,17 +204,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
                         if (amountsOnKwLine.length > 0) {
                             amountsOnKwLine.sort((a, b) => parseValueToFloat(b) - parseValueToFloat(a));
-                            amounts.push({ value: amountsOnKwLine[0], priority: 1, lineContext: trimmedLine });
+                            amounts.push({ value: amountsOnKwLine[0], priority: kwConfig.priority, lineContext: trimmedLine });
                             foundAmountForThisKeywordIteration = true;
                         }
                     } else {
-                        console.log(`La riga della parola chiave "${trimmedLine}" contiene una excludeKeyword. Gli importi su questa riga sono ignorati per la parola chiave ${kw}.`);
+                        console.log(`La riga della parola chiave "${trimmedLine}" contiene una excludeKeyword. Gli importi su questa riga sono ignorati per la parola chiave ${kwConfig.regex}.`);
                     }
 
                     // 2. Se nessun importo è stato trovato/accettato sulla riga della parola chiave,
                     // cerca nelle righe successive.
                     if (!foundAmountForThisKeywordIteration) {
-                        for (let j = 1; j <= 5; j++) { // Cerca fino a 5 righe successive
+                        for (let j = 1; j <= 5; j++) { 
                             if ((i + j) >= lines.length) break;
                             const nextLine = lines[i + j].trim();
                             if (!nextLine) continue;
@@ -230,41 +233,42 @@ document.addEventListener('DOMContentLoaded', () => {
 
                             if (amountsInNextLine.length > 0) {
                                 amountsInNextLine.sort((a, b) => parseValueToFloat(b) - parseValueToFloat(a));
-                                amounts.push({ value: amountsInNextLine[0], priority: 1, lineContext: nextLine });
+                                amounts.push({ value: amountsInNextLine[0], priority: kwConfig.priority, lineContext: nextLine });
                                 foundAmountForThisKeywordIteration = true;
-                                break; // Trovato importo nelle righe successive, interrompi il loop j
+                                break; 
                             }
                         }
                     }
 
-                    // Se questa parola chiave (kw) ha portato a trovare un importo,
-                    // interrompi il loop totalKeywords per questa trimmedLine.
                     if (foundAmountForThisKeywordIteration) {
-                        break; // Interrompi `for (const kw of totalKeywords)`
+                        break; 
                     }
-                } // fine if kw.test(trimmedLine)
-            } // fine for (const kw of totalKeywords)
-        } // fine outer: for (let i = 0; i < lines.length; i++)
+                } 
+            } 
+        } 
 
-        // Se non hai trovato nulla con priorità 1, cerca fallback su tutte le righe non escluse
+        // Se non hai trovato nulla con le priorità definite, cerca fallback su tutte le righe non escluse
         if (amounts.length === 0) {
             let fallbackCandidates = [];
             for (const l of lines) {
                 const trimmed = l.trim();
                 if (!trimmed || excludeKeywords.test(trimmed)) continue;
+                amountRegex.lastIndex = 0; // Reset regex for each line in fallback
                 let match;
-                let allAmounts = [];
+                let allAmountsInLine = []; // Collect all amounts in this specific line
                 while ((match = amountRegex.exec(trimmed)) !== null) {
-                    allAmounts.push(match[1]);
+                    allAmountsInLine.push(match[1]);
                 }
-                if (allAmounts.length > 0) {
-                    fallbackCandidates.push(...allAmounts);
+                if (allAmountsInLine.length > 0) {
+                    // Sort amounts in this line and take the largest, then add to fallbackCandidates
+                    allAmountsInLine.sort((a,b) => parseValueToFloat(b) - parseValueToFloat(a));
+                    fallbackCandidates.push(allAmountsInLine[0]);
                 }
             }
             if (fallbackCandidates.length > 0) {
-                console.log('Importi trovati su tutte le righe non escluse:', fallbackCandidates);
+                console.log('Importi trovati su tutte le righe non escluse (fallback):', fallbackCandidates);
                 fallbackCandidates.sort((a, b) => parseValueToFloat(b) - parseValueToFloat(a));
-                amounts.push({ value: fallbackCandidates[0], priority: 2, lineContext: 'fallback tutte le righe' });
+                amounts.push({ value: fallbackCandidates[0], priority: 4, lineContext: 'fallback tutte le righe' }); // Priorità di fallback: 4
             } else {
                 console.log('Nessun importo trovato su tutte le righe utili.');
             }
