@@ -138,41 +138,44 @@ document.addEventListener('DOMContentLoaded', () => {
             descrizione: "Scontrino"
         };
 
-        // --- LOGICA IMPORTO MIGLIORATA (parole chiave + cerca nelle 5 righe successive + fallback su tutte le righe non escluse) ---
-        let amounts = [];
+        let potentialAmounts = [];
         const parseValueToFloat = (valStr) => {
             if (!valStr) return 0;
-            const normalized = valStr.replace(/\\.(?=\\d{3}(?:,|$))/g, '').replace(',', '.');
+            // 1. Rimuovi tutti gli spazi
+            let cleanedValStr = valStr.replace(/\s/g, '');
+            // 2. Rimuovi i punti usati come separatori delle migliaia (es. 1.234,56 -> 1234,56)
+            cleanedValStr = cleanedValStr.replace(/\.(?=\d{3}(?:,|$))/g, '');
+            // 3. Sostituisci la virgola decimale con un punto (es. 1234,56 -> 1234.56)
+            const normalized = cleanedValStr.replace(',', '.');
             return parseFloat(normalized) || 0;
         };
-        const lines = text.split('\n'); // THIS WILL BE CORRECTED
+
+        const lines = text.split('\n');
         
-        // Configurazione delle parole chiave con priorità (0 è la più alta)
         const totalKeywordsConfig = [
-            { regex: /TOTALE\\s+COMPLESSIVO/i, priority: 0 },
-            { regex: /TOTALE\\s+EURO/i, priority: 0 },
-            { regex: /TOTALE\\s+EUR/i, priority: 0 },
-            { regex: /TOTALE\\s+SCONTRINO/i, priority: 0 },
-            { regex: /TOTALE\\s+DA\\s+PAGARE/i, priority: 0 },
-            { regex: /NETTO\\s+A\\s+PAGARE/i, priority: 0 },
-            { regex: /TOTALE\\s+FATTURA/i, priority: 0 },
+            { regex: /TOTALE\s+COMPLESSIVO/i, priority: 0 },
+            { regex: /TOTALE\s+EURO/i, priority: 0 },
+            { regex: /TOTALE\s+EUR/i, priority: 0 },
+            { regex: /TOTALE\s+SCONTRINO/i, priority: 0 },
+            { regex: /TOTALE\s+DA\s+PAGARE/i, priority: 0 },
+            { regex: /NETTO\s+A\s+PAGARE/i, priority: 0 },
+            { regex: /TOTALE\s+FATTURA/i, priority: 0 },
 
-            { regex: /PAGAMENTO\\s+ELETTRONICO/i, priority: 1 },
-            { regex: /IMPORTO\\s+PAGATO/i, priority: 1 }, // Potrebbe essere il totale o l'importo transato
-            { regex: /IMPORTO\\s+DA\\s+PAGARE/i, priority: 1 },
+            { regex: /PAGAMENTO\s+ELETTRONICO/i, priority: 1 },
+            { regex: /IMPORTO\s+PAGATO/i, priority: 1 },
+            { regex: /IMPORTO\s+DA\s+PAGARE/i, priority: 1 },
 
-            { regex: /TOTALE/i, priority: 2 }, // "TOTALE" generico
+            { regex: /TOTALE/i, priority: 2 },
 
-            // Queste sono più rischiose e potrebbero non essere il totale finale
-            { regex: /PAGAMENTO\\s+CONTANTE/i, priority: 3 }, // Spesso l'importo dato dal cliente
-            { regex: /IMPORTO/i, priority: 3 }, // Molto generico
-            { regex: /PAGATO/i, priority: 3 }  // Molto generico
+            { regex: /PAGAMENTO\s+CONTANTE/i, priority: 3 },
+            { regex: /IMPORTO/i, priority: 3 },
+            { regex: /PAGATO/i, priority: 3 }
         ];
 
-        const amountRegex = /(\\d{1,3}(?:[.,]\\d{3})*[.,]\\s?\\d{1,2})/g;
-        const excludeKeywords = /IVA|ALIQUOTA|IMPOSTA|TAX|SCONTO|RESTO|CREDITO|SUBTOTALE|RIEPILOGO\\s+ALIQUOTE|BUONO|TRONCARE|NON\\s+RISCOSSO|NON\\s+PAGATO|CODICE|ARTICOLO|TEL\\.|P\\.IVA|C\\.F\\.|SCONTRINO\\s+N\\.|DOC\\.|OPERAZIONE\\s+N\\./i; // THIS WILL BE UPDATED
+        const amountRegex = /(\d{1,3}(?:[.,]\d{3})*[.,]\s?\d{1,2})/g;
+        const excludeKeywords = /IVA|ALIQUOTA|IMPOSTA|TAX|SCONTO|RESTO|RESTN|CREDITO|SUBTOTALE|RIEPILOGO\s+ALIQUOTE|BUONO|TRONCARE|NON\s+RISCOSSO|NON\s+PAGATO|CODICE|ARTICOLO|TEL\.|P\.IVA|C\.F\.|SCONTRINO\s+N\.|DOC\.|OPERAZIONE\s+N\./i;
 
-        // Tenta di estrarre descrizione dal logo (prime 3 righe, solo maiuscole e spazi)
+        // Estrazione descrizione (invariata)
         {
             const logoPattern = /^[A-ZÀ-Ÿ\d'&-]{2,}(?:\s+[A-ZÀ-Ÿ\d'&-]{2,})+$/;
             for (let i = 0; i < Math.min(lines.length, 3); i++) {
@@ -184,87 +187,101 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // Cerca con priorità definite in totalKeywordsConfig e nelle 5 righe successive
-        outer: for (let i = 0; i < lines.length; i++) {
+        // 1. Raccolta importi guidata da parole chiave
+        for (let i = 0; i < lines.length; i++) {
             const trimmedLine = lines[i].trim();
             if (!trimmedLine) continue;
 
             for (const kwConfig of totalKeywordsConfig) {
                 if (kwConfig.regex.test(trimmedLine)) {
-                    let foundAmountForThisKeywordIteration = false;
-
-                    // 1. Controlla gli importi sulla riga stessa della parola chiave
-                    let amountsOnKwLine = [];
+                    // Parola chiave trovata sulla riga corrente (trimmedLine)
                     if (!excludeKeywords.test(trimmedLine)) {
                         amountRegex.lastIndex = 0;
                         let match;
                         while ((match = amountRegex.exec(trimmedLine)) !== null) {
-                            amountsOnKwLine.push(match[1]);
-                        }
-
-                        if (amountsOnKwLine.length > 0) {
-                            amountsOnKwLine.sort((a, b) => parseValueToFloat(b) - parseValueToFloat(a));
-                            amounts.push({ value: amountsOnKwLine[0], priority: kwConfig.priority, lineContext: trimmedLine });
-                            foundAmountForThisKeywordIteration = true;
+                            potentialAmounts.push({
+                                value: match[1],
+                                priority: kwConfig.priority,
+                                lineContext: trimmedLine,
+                                debugSource: `Keyword sulla stessa riga: ${kwConfig.regex.toString()}`
+                            });
                         }
                     } else {
-                        console.log(`La riga della parola chiave "${trimmedLine}" contiene una excludeKeyword. Gli importi su questa riga sono ignorati per la parola chiave ${kwConfig.regex}.`);
+                        console.log(`Riga "${trimmedLine}" contiene keyword ${kwConfig.regex.toString()} ma anche una excludeKeyword. Importi ignorati da questa riga per questa keyword.`);
                     }
 
-                    // 2. Se non abbiamo trovato un importo sulla stessa riga, controlla nelle 5 righe successive
-                    if (!foundAmountForThisKeywordIteration) {
-                        for (let j = 1; j <= 5 && i + j < lines.length; j++) {
-                            const nextLine = lines[i + j].trim();
-                            if (!nextLine) continue;
+                    // Cerca importi nelle 5 righe successive
+                    for (let j = 1; j <= 5 && (i + j) < lines.length; j++) {
+                        const nextLine = lines[i + j].trim();
+                        if (!nextLine) continue;
 
-                            if (!excludeKeywords.test(nextLine)) {
-                                amountRegex.lastIndex = 0;
-                                let match;
-                                while ((match = amountRegex.exec(nextLine)) !== null) {
-                                    amounts.push({ value: match[1], priority: kwConfig.priority, lineContext: nextLine });
-                                }
-                            } else {
-                                console.log(`La riga "${nextLine}" contiene una excludeKeyword. Gli importi su questa riga sono ignorati.`);
+                        if (!excludeKeywords.test(nextLine)) {
+                            amountRegex.lastIndex = 0;
+                            let match;
+                            while ((match = amountRegex.exec(nextLine)) !== null) {
+                                potentialAmounts.push({
+                                    value: match[1],
+                                    priority: kwConfig.priority, // Usa la priorità della keyword che ha attivato questa ricerca
+                                    lineContext: nextLine,
+                                    debugSource: `Keyword "${kwConfig.regex.toString()}" (riga ${i}), importo su riga successiva (${i+j})`
+                                });
                             }
+                        } else {
+                             console.log(`Riga successiva "${nextLine}" (per keyword ${kwConfig.regex.toString()}) contiene una excludeKeyword. Importi ignorati.`);
                         }
                     }
-
-                    // 3. Se ancora non abbiamo trovato un importo, possiamo fare un fallback su tutte le righe non escluse
-                    if (amounts.length === 0) {
-                        for (let j = 0; j < lines.length; j++) {
-                            const anyLine = lines[j].trim();
-                            if (!anyLine) continue;
-
-                            if (!excludeKeywords.test(anyLine)) {
-                                amountRegex.lastIndex = 0;
-                                let match;
-                                while ((match = amountRegex.exec(anyLine)) !== null) {
-                                    amounts.push({ value: match[1], priority: kwConfig.priority, lineContext: anyLine });
-                                }
-                            }
-                        }
-                    }
-
-                    // Ordina gli importi trovati per priorità e valore
-                    amounts.sort((a, b) => {
-                        if (a.priority !== b.priority) {
-                            return a.priority - b.priority;
-                        }
-                        return parseValueToFloat(b.value) - parseValueToFloat(a.value);
-                    });
-
-                    // Prendi il miglior importo trovato
-                    if (amounts.length > 0) {
-                        newItem.importo = amounts[0].value;
-                        console.log(`Importo trovato: ${newItem.importo} (linea: "${amounts[0].lineContext}")`);
-                    } else {
-                        console.log("Nessun importo trovato dopo la ricerca nelle righe successive.");
-                    }
-
-                    // Una volta trovata un'importo valido, possiamo fermarci
-                    break outer;
                 }
             }
+        }
+
+        // 2. Raccolta importi di fallback globale (priorità bassa)
+        const FALLBACK_PRIORITY = 10;
+        for (let i = 0; i < lines.length; i++) {
+            const lineContent = lines[i].trim();
+            if (!lineContent) continue;
+
+            if (!excludeKeywords.test(lineContent)) {
+                amountRegex.lastIndex = 0;
+                let match;
+                while ((match = amountRegex.exec(lineContent)) !== null) {
+                    potentialAmounts.push({
+                        value: match[1],
+                        priority: FALLBACK_PRIORITY,
+                        lineContext: lineContent,
+                        debugSource: 'Fallback globale'
+                    });
+                }
+            }
+        }
+        
+        // Rimuovi duplicati esatti (stesso valore, priorità, contesto, sorgente) prima dell'ordinamento
+        potentialAmounts = potentialAmounts.filter((amount, index, self) =>
+            index === self.findIndex((t) => (
+                t.value === amount.value && 
+                t.priority === amount.priority && 
+                t.lineContext === amount.lineContext && 
+                t.debugSource === amount.debugSource
+            ))
+        );
+
+        // 3. Ordinamento e selezione finale
+        console.log("Importi potenziali PRIMA dell'ordinamento:", JSON.stringify(potentialAmounts, null, 2));
+
+        if (potentialAmounts.length > 0) {
+            potentialAmounts.sort((a, b) => {
+                if (a.priority !== b.priority) {
+                    return a.priority - b.priority; // Priorità più bassa (0) viene prima
+                }
+                // Se la priorità è la stessa, preferisci l'importo maggiore
+                return parseValueToFloat(b.value) - parseValueToFloat(a.value);
+            });
+
+            console.log("Importi potenziali DOPO l'ordinamento:", JSON.stringify(potentialAmounts, null, 2));
+            newItem.importo = potentialAmounts[0].value;
+            console.log(`Importo finale selezionato: ${newItem.importo} (Priorità: ${potentialAmounts[0].priority}, Valore: ${parseValueToFloat(potentialAmounts[0].value)}, Contesto: "${potentialAmounts[0].lineContext}", Sorgente: ${potentialAmounts[0].debugSource})`);
+        } else {
+            console.log("Nessun importo valido trovato dopo tutti i passaggi.");
+            // newItem.importo resta "0.00" come da default
         }
 
         return newItem;
