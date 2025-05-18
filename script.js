@@ -150,15 +150,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const lines = text.split('\n');
         
         const totalKeywordsConfig = [
-            { regex: /TOTALE\\s+COMPLESSIVO/i, priority: 0 },
-            { regex: /TOTALE\\s+EURO/i, priority: 0 },
-            { regex: /TOTALE\\s+EUR/i, priority: 0 },
-            { regex: /TOTALE\\s+SCONTRINO/i, priority: 0 },
-            { regex: /TOTALE\\s+DA\\s+PAGARE/i, priority: 0 },
-            { regex: /NETTO\\s+A\\s+PAGARE/i, priority: 0 },
-            { regex: /TOTALE\\s+FATTURA/i, priority: 0 },
+            { regex: /TOTALE\s+COMPLESSIVO/i, priority: 0 },
+            { regex: /TOTALE\s+EURO/i, priority: 0 },
+            { regex: /TOTALE\s+EUR/i, priority: 0 },
+            { regex: /TOTALE\s+SCONTRINO/i, priority: 0 },
+            { regex: /TOTALE\s+DA\s+PAGARE/i, priority: 0 },
+            { regex: /NETTO\s+A\s+PAGARE/i, priority: 0 },
+            { regex: /TOTALE\s+FATTURA/i, priority: 0 },
 
-            { regex: /IMPORTO\\s+DA\\s+PAGARE/i, priority: 1 },   // Mantenuto - "da pagare" è utile
+            { regex: /IMPORTO\s+DA\s+PAGARE/i, priority: 1 },   // Mantenuto - "da pagare" è utile
 
             { regex: /TOTALE/i, priority: 2 },
 
