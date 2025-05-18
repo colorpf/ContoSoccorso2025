@@ -158,28 +158,46 @@ document.addEventListener('DOMContentLoaded', () => {
             { regex: /NETTO\s+A\s+PAGARE/i, priority: 0 },
             { regex: /TOTALE\s+FATTURA/i, priority: 0 },
 
-            { regex: /IMPORTO\s+DA\s+PAGARE/i, priority: 1 },   // Mantenuto - "da pagare" è utile
-
-            { regex: /TOTALE/i, priority: 2 },            // { regex: /PAGAMENTO\s+CONTANTE/i, priority: 3 },    // Rimosso come richiesto
+            { regex: /IMPORTO\s+DA\s+PAGARE/i, priority: 1 },   // Mantenuto - "da pagare" è utile            { regex: /TOTALE/i, priority: 2 },            // { regex: /PAGAMENTO\s+CONTANTE/i, priority: 3 },    // Rimosso come richiesto
             { regex: /IMPORTO/i, priority: 3 },                 // Mantenuto - 'IMPORTO' generico con priorità bassa
             // { regex: /PAGATO/i, priority: 3 }                   // Rimosso come richiesto
-        ];        const amountRegex = /(\d{1,3}(?:[.,]\d{3})*[.,]\s?\d{1,2})/g;
+        ];
+        
+        const amountRegex = /(\d{1,3}(?:[.,]\d{3})*[.,]\s?\d{1,2})/g;
         const excludeKeywords = /IVA|ALIQUOTA|IMPOSTA|TAX|SCONTO|RESTO|RESTN|CREDITO|SUBTOTALE|RIEPILOGO\s+ALIQUOTE|BUONO|TRONCARE|NON\s+RISCOSSO|NON\s+PAGATO|CODICE|ARTICOLO|TEL\.|P\.IVA|C\.F\.|SCONTRINO\s+N\.|DOC\.|OPERAZIONE\s+N\./i;
 
         // Estrazione descrizione
-        {
-            console.log("[Descrizione] Inizio estrazione descrizione.");
-            const merchantNameCandidatePattern = /[A-ZÀ-Ÿ\d.'&-]{2,}(\s+[A-ZÀ-Ÿ\d.'&-]{2,})+/ig; // Non ancorato, globale
-            const searchLinesForMerchant = Math.min(lines.length, 10); // Aumentato a 10 righe
-            let merchantFound = false;
-
+        {            console.log("[Descrizione] Inizio estrazione descrizione.");
+            // Priorità a nomi più comuni di negozi italiani
+            const knownMerchants = /EUROSPIN|CONAD|COOP|LIDL|CARREFOUR|ESSELUNGA|AUCHAN|IPER|PENNY|MD|PAM|DECATHLON|IKEA|LEROY\s+MERLIN/i;
+            const merchantNameCandidatePattern = /[A-ZÀ-Ÿ\d.'&-]{2,}(\s+[A-ZÀ-Ÿ\d.'&-]{2,})+/ig; // Pattern generico non ancorato
+            const searchLinesForMerchant = Math.min(lines.length, 15); // Aumentato a 15 righe
+            let merchantFound = false;            // Prima cerchiamo nei nomi noti (priorità massima)
             for (let i = 0; i < searchLinesForMerchant; i++) {
                 const lineToSearch = lines[i].trim();
                 if (!lineToSearch) continue;
-
-                merchantNameCandidatePattern.lastIndex = 0; // Reset per regex globale
-                let match;
-                let bestMatchInLine = "";
+                
+                // Controlla se la riga contiene un merchant noto
+                if (knownMerchants.test(lineToSearch)) {
+                    let knownMatch = lineToSearch.match(knownMerchants);
+                    if (knownMatch) {
+                        newItem.descrizione = knownMatch[0];
+                        console.log(`[Descrizione] Trovato commerciante noto: "${newItem.descrizione}" sulla riga ${i}`);
+                        merchantFound = true;
+                        break;
+                    }
+                }
+            }
+            
+            // Se non è stato trovato un merchant noto, prosegui con il pattern generico
+            if (!merchantFound) {
+                for (let i = 0; i < searchLinesForMerchant; i++) {
+                    const lineToSearch = lines[i].trim();
+                    if (!lineToSearch) continue;
+    
+                    merchantNameCandidatePattern.lastIndex = 0; // Reset per regex globale
+                    let match;
+                    let bestMatchInLine = "";
 
                 while ((match = merchantNameCandidatePattern.exec(lineToSearch)) !== null) {
                     const currentMatchText = match[0];
@@ -189,9 +207,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         !/P\.IVA|C\.F\.|VIA|CAP|TEL/i.test(currentMatchText)) { // Evita termini comuni di indirizzi/contatti
                         bestMatchInLine = currentMatchText;
                     }
-                }
-
-                if (bestMatchInLine) {
+                }                if (bestMatchInLine) {
                     newItem.descrizione = bestMatchInLine;
                     // Logica di pulizia per prefissi OCR errati (es. "ae NOME")
                     const parts = newItem.descrizione.split(/\s+/); // Split su whitespace
@@ -205,6 +221,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     console.log(`[Descrizione] Trovato nome: "${newItem.descrizione}" sulla riga ${i}: "${lineToSearch}"`);
                     merchantFound = true;
                     break; 
+                }
                 }
             }
             if (!merchantFound) {
