@@ -170,15 +170,24 @@ document.addEventListener('DOMContentLoaded', () => {
         ];
 
         const amountRegex = /(\d{1,3}(?:[.,]\d{3})*[.,]\s?\d{1,2})/g;
-        const excludeKeywords = /IVA|ALIQUOTA|IMPOSTA|TAX|SCONTO|RESTO|RESTN|CREDITO|SUBTOTALE|RIEPILOGO\s+ALIQUOTE|BUONO|TRONCARE|NON\s+RISCOSSO|NON\s+PAGATO|CODICE|ARTICOLO|TEL\.|P\.IVA|C\.F\.|SCONTRINO\s+N\.|DOC\.|OPERAZIONE\s+N\./i;
+        const excludeKeywords = /IVA|ALIQUOTA|IMPOSTA|TAX|SCONTO|RESTO|RESTN|CREDITO|SUBTOTALE|RIEPILOGO\\s+ALIQUOTE|BUONO|TRONCARE|NON\\s+RISCOSSO|NON\\s+PAGATO|CODICE|ARTICOLO|TEL\\.|P\\.IVA|C\\.F\\.|SCONTRINO\\s+N\\.|DOC\\.|OPERAZIONE\\s+N\\./i;
 
-        // Estrazione descrizione (invariata)
+        // Estrazione descrizione
         {
-            const logoPattern = /^[A-ZÀ-Ÿ\d'&\-]{2,}(?:\s+[A-ZÀ-Ÿ\d'&\-]{2,})+$/; // Trattino escapato
-            for (let i = 0; i < Math.min(lines.length, 3); i++) {
+            // Updated to include '.' and will be case-insensitive (already was)
+            const logoPattern = /^[A-ZÀ-Ÿ\\d.'&\\-]{2,}(?:\\s+[A-ZÀ-Ÿ\\d.'&\\-]{2,})+$/i;
+            for (let i = 0; i < Math.min(lines.length, 5); i++) { // Increased search to 5 lines
                 const l = lines[i].trim();
                 if (logoPattern.test(l)) {
                     newItem.descrizione = l;
+                    // Attempt to clean common OCR noise like "ae " if followed by uppercase/digit
+                    const parts = newItem.descrizione.split(/\\s+/);
+                    if (parts.length > 1 &&
+                        parts[0].length <= 2 &&
+                        parts[0].match(/^[a-zà-ÿ]+$/) && // first word is all lowercase
+                        parts[1].match(/^[A-ZÀ-Ÿ0-9]/)) { // second word starts with uppercase/digit
+                        newItem.descrizione = parts.slice(1).join(" ");
+                    }
                     break;
                 }
             }
