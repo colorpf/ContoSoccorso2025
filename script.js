@@ -160,20 +160,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
             { regex: /IMPORTO\s+DA\s+PAGARE/i, priority: 1 },   // Mantenuto - "da pagare" è utile
 
-            { regex: /TOTALE/i, priority: 2 },
-
-            // { regex: /PAGAMENTO\\s+CONTANTE/i, priority: 3 },    // Rimosso come richiesto
+            { regex: /TOTALE/i, priority: 2 },            // { regex: /PAGAMENTO\s+CONTANTE/i, priority: 3 },    // Rimosso come richiesto
             { regex: /IMPORTO/i, priority: 3 },                 // Mantenuto - 'IMPORTO' generico con priorità bassa
             // { regex: /PAGATO/i, priority: 3 }                   // Rimosso come richiesto
-        ];
-
-        const amountRegex = /(\\d{1,3}(?:[.,]\\d{3})*[.,]\\s?\\d{1,2})/g;
-        const excludeKeywords = /IVA|ALIQUOTA|IMPOSTA|TAX|SCONTO|RESTO|RESTN|CREDITO|SUBTOTALE|RIEPILOGO\\s+ALIQUOTE|BUONO|TRONCARE|NON\\s+RISCOSSO|NON\\s+PAGATO|CODICE|ARTICOLO|TEL\\.|P\\.IVA|C\\.F\\.|SCONTRINO\\s+N\\.|DOC\\.|OPERAZIONE\\s+N\\./i;
+        ];        const amountRegex = /(\d{1,3}(?:[.,]\d{3})*[.,]\s?\d{1,2})/g;
+        const excludeKeywords = /IVA|ALIQUOTA|IMPOSTA|TAX|SCONTO|RESTO|RESTN|CREDITO|SUBTOTALE|RIEPILOGO\s+ALIQUOTE|BUONO|TRONCARE|NON\s+RISCOSSO|NON\s+PAGATO|CODICE|ARTICOLO|TEL\.|P\.IVA|C\.F\.|SCONTRINO\s+N\.|DOC\.|OPERAZIONE\s+N\./i;
 
         // Estrazione descrizione
         {
             console.log("[Descrizione] Inizio estrazione descrizione.");
-            const merchantNameCandidatePattern = /[A-ZÀ-Ÿ\\d.'&-]{2,}(\\s+[A-ZÀ-Ÿ\\d.'&-]{2,})+/ig; // Non ancorato, globale
+            const merchantNameCandidatePattern = /[A-ZÀ-Ÿ\d.'&-]{2,}(\s+[A-ZÀ-Ÿ\d.'&-]{2,})+/ig; // Non ancorato, globale
             const searchLinesForMerchant = Math.min(lines.length, 10); // Aumentato a 10 righe
             let merchantFound = false;
 
@@ -189,9 +185,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     const currentMatchText = match[0];
                     // Preferisci corrispondenze più lunghe, evita quelle puramente numeriche o troppo corte
                     if (currentMatchText.length > bestMatchInLine.length && 
-                        currentMatchText.length >= 5 && 
-                        !/^\\d[\\d\\s.,]*$/.test(currentMatchText) &&
-                        !/P\\.IVA|C\\.F\\.|VIA|CAP|TEL/i.test(currentMatchText)) { // Evita termini comuni di indirizzi/contatti
+                        currentMatchText.length >= 5 &&                        !/^\d[\d\s.,]*$/.test(currentMatchText) &&
+                        !/P\.IVA|C\.F\.|VIA|CAP|TEL/i.test(currentMatchText)) { // Evita termini comuni di indirizzi/contatti
                         bestMatchInLine = currentMatchText;
                     }
                 }
@@ -199,7 +194,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (bestMatchInLine) {
                     newItem.descrizione = bestMatchInLine;
                     // Logica di pulizia per prefissi OCR errati (es. "ae NOME")
-                    const parts = newItem.descrizione.split(/\\s+/); // Corretto: /\s+/ invece di /\\s+/
+                    const parts = newItem.descrizione.split(/\s+/); // Split su whitespace
                     if (parts.length > 1 &&
                         parts[0].length <= 2 &&
                         parts[0].match(/^[a-zà-ÿ]+$/) && // prima parola tutta minuscola
@@ -241,8 +236,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
 
                     // Cerca importi nelle 5 righe successive, con logica di priorità affinata
-                    for (let j = 1; j <= 5 && (i + j) < lines.length; j++) {
-                        const nextLine = lines[i + j].trim();
+                    for (let j = 1; j <= 5 && (i + j) < lines.length; j++) {                        const nextLine = lines[i + j].trim();
                         if (!nextLine) continue;
 
                         if (!excludeKeywords.test(nextLine)) {
