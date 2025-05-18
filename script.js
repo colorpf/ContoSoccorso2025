@@ -150,26 +150,24 @@ document.addEventListener('DOMContentLoaded', () => {
         const lines = text.split('\n');
         
         const totalKeywordsConfig = [
-            { regex: /TOTALE\s+COMPLESSIVO/i, priority: 0 },
-            { regex: /TOTALE\s+EURO/i, priority: 0 },
-            { regex: /TOTALE\s+EUR/i, priority: 0 },
-            { regex: /TOTALE\s+SCONTRINO/i, priority: 0 },
-            { regex: /TOTALE\s+DA\s+PAGARE/i, priority: 0 },
-            { regex: /NETTO\s+A\s+PAGARE/i, priority: 0 },
-            { regex: /TOTALE\s+FATTURA/i, priority: 0 },
+            { regex: /TOTALE\\s+COMPLESSIVO/i, priority: 0 },
+            { regex: /TOTALE\\s+EURO/i, priority: 0 },
+            { regex: /TOTALE\\s+EUR/i, priority: 0 },
+            { regex: /TOTALE\\s+SCONTRINO/i, priority: 0 },
+            { regex: /TOTALE\\s+DA\\s+PAGARE/i, priority: 0 },
+            { regex: /NETTO\\s+A\\s+PAGARE/i, priority: 0 },
+            { regex: /TOTALE\\s+FATTURA/i, priority: 0 },
 
-            { regex: /PAGAMENTO\s+ELETTRONICO/i, priority: 1 },
-            { regex: /IMPORTO\s+PAGATO/i, priority: 1 },
-            { regex: /IMPORTO\s+DA\s+PAGARE/i, priority: 1 },
+            { regex: /IMPORTO\\s+DA\\s+PAGARE/i, priority: 1 },   // Mantenuto - "da pagare" è utile
 
             { regex: /TOTALE/i, priority: 2 },
 
-            { regex: /PAGAMENTO\s+CONTANTE/i, priority: 3 },
-            { regex: /IMPORTO/i, priority: 3 },
-            { regex: /PAGATO/i, priority: 3 }
+            // { regex: /PAGAMENTO\\s+CONTANTE/i, priority: 3 },    // Rimosso come richiesto
+            { regex: /IMPORTO/i, priority: 3 },                 // Mantenuto - 'IMPORTO' generico con priorità bassa
+            // { regex: /PAGATO/i, priority: 3 }                   // Rimosso come richiesto
         ];
 
-        const amountRegex = /(\d{1,3}(?:[.,]\d{3})*[.,]\s?\d{1,2})/g;
+        const amountRegex = /(\\d{1,3}(?:[.,]\\d{3})*[.,]\\s?\\d{1,2})/g;
         const excludeKeywords = /IVA|ALIQUOTA|IMPOSTA|TAX|SCONTO|RESTO|RESTN|CREDITO|SUBTOTALE|RIEPILOGO\\s+ALIQUOTE|BUONO|TRONCARE|NON\\s+RISCOSSO|NON\\s+PAGATO|CODICE|ARTICOLO|TEL\\.|P\\.IVA|C\\.F\\.|SCONTRINO\\s+N\\.|DOC\\.|OPERAZIONE\\s+N\\./i;
 
         // Estrazione descrizione
