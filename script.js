@@ -336,6 +336,31 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log("Nessun importo valido trovato dopo tutti i passaggi.");
         }
 
+        // bottom-lines fallback se nessun importo guidato
+        if (potentialAmounts.length === 0) {
+            console.log("Guided extraction failed; using bottom-lines fallback.");
+            const bottomCount = Math.min(10, lines.length);
+            const bottomLines = lines.slice(-bottomCount);
+            let bottomAmounts = [];
+            for (const bottomLine of bottomLines) {
+                const trimmedLine = bottomLine.trim();
+                if (!trimmedLine || excludeKeywords.test(trimmedLine)) continue;
+                amountRegex.lastIndex = 0;
+                let m;
+                while ((m = amountRegex.exec(trimmedLine)) !== null) {
+                    bottomAmounts.push(m[1]);
+                }
+            }
+            if (bottomAmounts.length > 0) {
+                const maxAmount = bottomAmounts.reduce((max, curr) =>
+                    parseValueToFloat(curr) > parseValueToFloat(max) ? curr : max
+                );
+                newItem.importo = maxAmount;
+                console.log(`Bottom-lines fallback selected: ${newItem.importo}`);
+                return newItem;
+            }
+        }
+
         return newItem;
     }
 
