@@ -174,22 +174,48 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Estrazione descrizione
         {
-            // Updated to include '.' and will be case-insensitive (already was)
-            const logoPattern = /^[A-ZÀ-Ÿ\\d.'&\\-]{2,}(?:\\s+[A-ZÀ-Ÿ\\d.'&\\-]{2,})+$/i;
-            for (let i = 0; i < Math.min(lines.length, 5); i++) { // Increased search to 5 lines
-                const l = lines[i].trim();
-                if (logoPattern.test(l)) {
-                    newItem.descrizione = l;
-                    // Attempt to clean common OCR noise like "ae " if followed by uppercase/digit
-                    const parts = newItem.descrizione.split(/\\s+/);
+            console.log("[Descrizione] Inizio estrazione descrizione.");
+            const merchantNameCandidatePattern = /[A-ZÀ-Ÿ\\d.'&-]{2,}(\\s+[A-ZÀ-Ÿ\\d.'&-]{2,})+/ig; // Non ancorato, globale
+            const searchLinesForMerchant = Math.min(lines.length, 10); // Aumentato a 10 righe
+            let merchantFound = false;
+
+            for (let i = 0; i < searchLinesForMerchant; i++) {
+                const lineToSearch = lines[i].trim();
+                if (!lineToSearch) continue;
+
+                merchantNameCandidatePattern.lastIndex = 0; // Reset per regex globale
+                let match;
+                let bestMatchInLine = "";
+
+                while ((match = merchantNameCandidatePattern.exec(lineToSearch)) !== null) {
+                    const currentMatchText = match[0];
+                    // Preferisci corrispondenze più lunghe, evita quelle puramente numeriche o troppo corte
+                    if (currentMatchText.length > bestMatchInLine.length && 
+                        currentMatchText.length >= 5 && 
+                        !/^\\d[\\d\\s.,]*$/.test(currentMatchText) &&
+                        !/P\\.IVA|C\\.F\\.|VIA|CAP|TEL/i.test(currentMatchText)) { // Evita termini comuni di indirizzi/contatti
+                        bestMatchInLine = currentMatchText;
+                    }
+                }
+
+                if (bestMatchInLine) {
+                    newItem.descrizione = bestMatchInLine;
+                    // Logica di pulizia per prefissi OCR errati (es. "ae NOME")
+                    const parts = newItem.descrizione.split(/\\s+/); // Corretto: /\s+/ invece di /\\s+/
                     if (parts.length > 1 &&
                         parts[0].length <= 2 &&
-                        parts[0].match(/^[a-zà-ÿ]+$/) && // first word is all lowercase
-                        parts[1].match(/^[A-ZÀ-Ÿ0-9]/)) { // second word starts with uppercase/digit
+                        parts[0].match(/^[a-zà-ÿ]+$/) && // prima parola tutta minuscola
+                        parts[1].match(/^[A-ZÀ-Ÿ0-9]/)) { // seconda parola inizia con maiuscola/numero
                         newItem.descrizione = parts.slice(1).join(" ");
+                        console.log(`[Descrizione] Nome pulito: "${newItem.descrizione}"`);
                     }
-                    break;
+                    console.log(`[Descrizione] Trovato nome: "${newItem.descrizione}" sulla riga ${i}: "${lineToSearch}"`);
+                    merchantFound = true;
+                    break; 
                 }
+            }
+            if (!merchantFound) {
+                console.log(`[Descrizione] Nessun nome valido trovato nelle prime ${searchLinesForMerchant} righe. Default: "${newItem.descrizione}"`);
             }
         }
 
@@ -226,24 +252,23 @@ document.addEventListener('DOMContentLoaded', () => {
                             let matchAmount;
                             while ((matchAmount = amountRegex.exec(nextLine)) !== null) {
                                 let amountInNextLine = matchAmount[1];
-                                // Default: priorità leggermente degradata rispetto alla keyword che ha iniziato la ricerca
-                                let priorityForNextLineAmount = kwConfig.priority + 1; 
-                                let sourceInfo = `Importo su riga ${i+j} (vicino a keyword '${kwConfig.regex.toString()}' su riga ${i})`;
-                                let nextLineHasOwnKeyword = false;
-
+                                // Default: eredita priorità dalla keyword che ha attivato la ricerca
+                                let assignedPriority = kwConfig.priority; 
+                                let sourceInfo = `Importo su riga ${i+j} (vicino a keyword '${kwConfig.regex.toString()}' su riga ${i}, eredita prio ${assignedPriority})`;
+                                
                                 // Controlla se 'nextLine' stessa contiene una keyword da totalKeywordsConfig
                                 for (const nextKwConfig of totalKeywordsConfig) {
                                     if (nextKwConfig.regex.test(nextLine)) {
-                                        priorityForNextLineAmount = nextKwConfig.priority; // Usa la priorità della keyword specifica di nextLine
-                                        sourceInfo += ` - Match diretto su riga ${i+j} con keyword '${nextKwConfig.regex.toString()}' (prio ${nextKwConfig.priority})`;
-                                        nextLineHasOwnKeyword = true;
-                                        break; // Usa la priorità della prima/più specifica keyword trovata su nextLine
+                                        // Se nextLine ha una sua keyword, usa la priorità di *quella* keyword.
+                                        assignedPriority = nextKwConfig.priority; 
+                                        sourceInfo = `Importo su riga ${i+j} (match diretto con keyword '${nextKwConfig.regex.toString()}' prio ${assignedPriority})`;
+                                        break; 
                                     }
                                 }
                                 
                                 potentialAmounts.push({
                                     value: amountInNextLine,
-                                    priority: priorityForNextLineAmount,
+                                    priority: assignedPriority, // Usa la priorità determinata
                                     lineContext: nextLine,
                                     debugSource: sourceInfo
                                 });
