@@ -79,6 +79,29 @@ document.addEventListener('DOMContentLoaded', () => {
                 // logger: m => console.log(m), // Riduci i log se necessario
             });
 
+            // Configurazioni OCR per migliorare il riconoscimento degli scontrini
+            const baseOcrParams = {
+                tessjs_create_hocr: '0',
+                tessjs_create_tsv: '0',
+                tessjs_create_pdf: '0',
+                tessjs_create_boxfile: '0',
+                tessjs_create_unlv: '0',
+                tessjs_create_osd: '0',
+                tessjs_textonly_pdf: '0',
+                
+                // Parametri OCR specifici per migliorare il riconoscimento di scontrini
+                tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,:/\\-+%€$£&*()<>[]{}=@#"\'àèéìòù ',
+                tessedit_pageseg_mode: '6', // 6 = Assume a single uniform block of text
+                // tessedit_ocr_engine_mode: '2', // 2 = Only use LSTM neural network
+                preserve_interword_spaces: '1',
+                language_model_penalty_non_freq_dict_word: '0.1',
+                language_model_penalty_non_dict_word: '0.15'
+            };
+
+            // Applica i parametri base
+            await worker.setParameters(baseOcrParams);
+
+            // Carica e configura il dizionario personalizzato
             try {
                 const response = await fetch('ita.special-words'); // Carica il file dalla stessa directory dell'HTML
                 if (response.ok) {
@@ -86,10 +109,23 @@ document.addEventListener('DOMContentLoaded', () => {
                     const textEncoder = new TextEncoder();
                     const fileDataAsUint8Array = textEncoder.encode(fileContentAsText);
                     
+                    // Assicurati che il file non abbia il commento iniziale
+                    if (fileContentAsText.startsWith('//')) {
+                        console.warn('Il file dizionario inizia con un commento, potrebbe non funzionare correttamente');
+                    }
+                    
                     worker.FS('writeFile', customUserWordsVirtualPath, fileDataAsUint8Array);
                     
+                    // Migliora l'integrazione del dizionario configurando i parametri aggiuntivi
                     await worker.setParameters({
-                        tessedit_user_words_file: customUserWordsVirtualPath
+                        tessedit_user_words_file: customUserWordsVirtualPath,
+                        load_system_dawg: '1',
+                        load_freq_dawg: '1',
+                        user_words_suffix: 'user-words',
+                        user_patterns_suffix: 'user-patterns',
+                        language_model_ngram_on: '1',
+                        textord_tabfind_vertical_text: '1',
+                        textord_tabfind_force_vertical_text: '0',
                     });
                     console.log(`Dizionario personalizzato '${customUserWordsVirtualPath}' caricato e configurato.`);
                     statusDiv.textContent = 'Avvio OCR con dizionario personalizzato...';
@@ -185,8 +221,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Estrazione descrizione
         {            console.log("[Descrizione] Inizio estrazione descrizione.");            // Priorità a nomi più comuni di negozi italiani
-            // Migliorata detection di EUROSPIN con varianti OCR comuni
-            const knownMerchants = /EURO\s*SPIN|EUR[O0]\s*SP[I1]N|EU[I1]?ROSP[I1]N|EUROS?P[I1]N\s?[I1]?T|SPIN[I1]T|[I1]?SPIN|EUROSPIN|CONAD|COOP|LIDL|CARREFOUR|ESSELUNGA|AUCHAN|IPER|PENNY|MD|PAM|DECATHLON|IKEA|LEROY\s+MERLIN/i;
+            // Migliorata detection di EUROSPIN con varianti OCR comuni - ancora più robusta per errori di riconoscimento
+            const knownMerchants = /EURO\s*SP[I1]N|EUR[O0]\s*SP[I1]N|EU[I1]?R[O0]SP[I1]N|EUROS?P[I1]N\s?[I1]?T|SP[I1]N[I1]T|[I1]?SP[I1]N|EUROSP[I1]N|CONAD|COOP|L[I1]DL|CARREFOUR|ESSELUNGA|AUCHAN|[I1]PER|PENNY|MD|PAM|DECATHLON|[I1]KEA|LEROY\s+MERL[I1]N/i;
             const merchantNameCandidatePattern = /[A-ZÀ-Ÿ\d.'&-]{2,}(\s+[A-ZÀ-Ÿ\d.'&-]{2,})+/ig; // Pattern generico non ancorato
             const searchLinesForMerchant = Math.min(lines.length, 15); // Aumentato a 15 righe
             let merchantFound = false;            // Prima cerchiamo nei nomi noti (priorità massima)
@@ -199,10 +235,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (knownMatch) {
                         newItem.descrizione = knownMatch[0];
                         // Uniforma alcuni nomi riconosciuti
-                        if(/SPIN|EURO/i.test(newItem.descrizione)) {
+                        if(/SP[I1]N|EURO/i.test(newItem.descrizione)) {
                             newItem.descrizione = "EUROSPIN";
+                        } else if(/CONAD|C0NAD/i.test(newItem.descrizione)) {
+                            newItem.descrizione = "CONAD";
+                        } else if(/L[I1]DL/i.test(newItem.descrizione)) {
+                            newItem.descrizione = "LIDL";
                         }
-                        console.log(`[Descrizione] Trovato commerciante noto: "${newItem.descrizione}" sulla riga ${i}`);
+                        console.log(`[Descrizione] Trovato commerciante noto: "${newItem.descrizione}" sulla riga ${i}: "${lineToSearch}"`);
                         merchantFound = true;
                         break;
                     }
@@ -211,9 +251,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Cerca anche nelle parti di una riga (es. "EURO" e "SPIN" su righe diverse)
                 if (!merchantFound && (
                     /EURO/i.test(lineToSearch) ||
-                    /SPIN/i.test(lineToSearch) ||
-                    /1SPIN/i.test(lineToSearch) ||
-                    /ISPIN/i.test(lineToSearch)
+                    /SP[I1]N/i.test(lineToSearch) ||
+                    /1SP[I1]N/i.test(lineToSearch) ||
+                    /[I1]SP[I1]N/i.test(lineToSearch)
                 )) {
                     console.log(`[Descrizione] Trovato indizio di EUROSPIN sulla riga ${i}: "${lineToSearch}"`);
                     newItem.descrizione = "EUROSPIN";
@@ -262,7 +302,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // 1. Raccolta importi guidata da parole chiave
+        // 1. Raccolta importti guidata da parole chiave
         for (let i = 0; i < lines.length; i++) {
             const trimmedLine = lines[i].trim();
             if (!trimmedLine) continue;
@@ -322,7 +362,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // 2. Raccolta importi di fallback globale (priorità bassa)
+        // 2. Raccolta importti di fallback globale (priorità bassa)
         const FALLBACK_PRIORITY = 10;
         for (let i = 0; i < lines.length; i++) {
             const lineContent = lines[i].trim();
