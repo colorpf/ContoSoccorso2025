@@ -158,7 +158,10 @@ document.addEventListener('DOMContentLoaded', () => {
             { regex: /NETTO\s+A\s+PAGARE/i, priority: 0 },
             { regex: /TOTALE\s+FATTURA/i, priority: 0 },
 
-            { regex: /IMPORTO\s+DA\s+PAGARE/i, priority: 1 },   // Mantenuto - "da pagare" è utile            { regex: /TOTALE/i, priority: 2 },            // { regex: /PAGAMENTO\s+CONTANTE/i, priority: 3 },    // Rimosso come richiesto
+            { regex: /IMPORTO\s+DA\s+PAGARE/i, priority: 1 },   // Mantenuto - "da pagare" è utile
+            
+            { regex: /TOTALE/i, priority: 2 },            // Keyword generica con priorità minore
+            // { regex: /PAGAMENTO\s+CONTANTE/i, priority: 3 },    // Rimosso come richiesto
             { regex: /IMPORTO/i, priority: 3 },                 // Mantenuto - 'IMPORTO' generico con priorità bassa
             // { regex: /PAGATO/i, priority: 3 }                   // Rimosso come richiesto
         ];
@@ -167,25 +170,41 @@ document.addEventListener('DOMContentLoaded', () => {
         const excludeKeywords = /IVA|ALIQUOTA|IMPOSTA|TAX|SCONTO|RESTO|RESTN|CREDITO|SUBTOTALE|RIEPILOGO\s+ALIQUOTE|BUONO|TRONCARE|NON\s+RISCOSSO|NON\s+PAGATO|CODICE|ARTICOLO|TEL\.|P\.IVA|C\.F\.|SCONTRINO\s+N\.|DOC\.|OPERAZIONE\s+N\./i;
 
         // Estrazione descrizione
-        {            console.log("[Descrizione] Inizio estrazione descrizione.");
-            // Priorità a nomi più comuni di negozi italiani
-            const knownMerchants = /EUROSPIN|CONAD|COOP|LIDL|CARREFOUR|ESSELUNGA|AUCHAN|IPER|PENNY|MD|PAM|DECATHLON|IKEA|LEROY\s+MERLIN/i;
+        {            console.log("[Descrizione] Inizio estrazione descrizione.");            // Priorità a nomi più comuni di negozi italiani
+            // Migliorata detection di EUROSPIN con varianti OCR comuni
+            const knownMerchants = /EURO\s*SPIN|EUR[O0]\s*SP[I1]N|EU[I1]?ROSP[I1]N|EUROS?P[I1]N\s?[I1]?T|SPIN[I1]T|[I1]?SPIN|EUROSPIN|CONAD|COOP|LIDL|CARREFOUR|ESSELUNGA|AUCHAN|IPER|PENNY|MD|PAM|DECATHLON|IKEA|LEROY\s+MERLIN/i;
             const merchantNameCandidatePattern = /[A-ZÀ-Ÿ\d.'&-]{2,}(\s+[A-ZÀ-Ÿ\d.'&-]{2,})+/ig; // Pattern generico non ancorato
             const searchLinesForMerchant = Math.min(lines.length, 15); // Aumentato a 15 righe
             let merchantFound = false;            // Prima cerchiamo nei nomi noti (priorità massima)
             for (let i = 0; i < searchLinesForMerchant; i++) {
                 const lineToSearch = lines[i].trim();
                 if (!lineToSearch) continue;
-                
-                // Controlla se la riga contiene un merchant noto
+                  // Controlla se la riga contiene un merchant noto
                 if (knownMerchants.test(lineToSearch)) {
                     let knownMatch = lineToSearch.match(knownMerchants);
                     if (knownMatch) {
                         newItem.descrizione = knownMatch[0];
+                        // Uniforma alcuni nomi riconosciuti
+                        if(/SPIN|EURO/i.test(newItem.descrizione)) {
+                            newItem.descrizione = "EUROSPIN";
+                        }
                         console.log(`[Descrizione] Trovato commerciante noto: "${newItem.descrizione}" sulla riga ${i}`);
                         merchantFound = true;
                         break;
                     }
+                }
+                
+                // Cerca anche nelle parti di una riga (es. "EURO" e "SPIN" su righe diverse)
+                if (!merchantFound && (
+                    /EURO/i.test(lineToSearch) ||
+                    /SPIN/i.test(lineToSearch) ||
+                    /1SPIN/i.test(lineToSearch) ||
+                    /ISPIN/i.test(lineToSearch)
+                )) {
+                    console.log(`[Descrizione] Trovato indizio di EUROSPIN sulla riga ${i}: "${lineToSearch}"`);
+                    newItem.descrizione = "EUROSPIN";
+                    merchantFound = true;
+                    break;
                 }
             }
             
@@ -250,10 +269,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     } else {
                         console.log(`Riga "${trimmedLine}" contiene keyword ${kwConfig.regex.toString()} ma anche una excludeKeyword. Importi ignorati da questa riga per questa keyword.`);
-                    }
-
-                    // Cerca importi nelle 5 righe successive, con logica di priorità affinata
-                    for (let j = 1; j <= 5 && (i + j) < lines.length; j++) {                        const nextLine = lines[i + j].trim();
+                    }                    // Cerca importi nelle 5 righe successive, con logica di priorità affinata
+                    for (let j = 1; j <= 5 && (i + j) < lines.length; j++) {
+                        const nextLine = lines[i + j].trim();
                         if (!nextLine) continue;
 
                         if (!excludeKeywords.test(nextLine)) {
