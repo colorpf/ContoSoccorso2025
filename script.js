@@ -105,14 +105,12 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const response = await fetch('ita.special-words'); // Carica il file dalla stessa directory dell'HTML
                 if (response.ok) {
-                    const fileContentAsText = await response.text();
+                    let fileContentAsText = await response.text();
+                    // Rimuovi eventuali commenti iniziali dal file dizionario
+                    fileContentAsText = fileContentAsText.split('\n').filter(line => !line.trim().startsWith('//')).join('\n');
+
                     const textEncoder = new TextEncoder();
                     const fileDataAsUint8Array = textEncoder.encode(fileContentAsText);
-                    
-                    // Assicurati che il file non abbia il commento iniziale
-                    if (fileContentAsText.startsWith('//')) {
-                        console.warn('Il file dizionario inizia con un commento, potrebbe non funzionare correttamente');
-                    }
                     
                     worker.FS('writeFile', customUserWordsVirtualPath, fileDataAsUint8Array);
                     
@@ -220,12 +218,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const excludeKeywords = /IVA|ALIQUOTA|IMPOSTA|TAX|SCONTO|RESTO|RESTN|CREDITO|SUBTOTALE|RIEPILOGO\s+ALIQUOTE|BUONO|TRONCARE|NON\s+RISCOSSO|NON\s+PAGATO|CODICE|ARTICOLO|TEL\.|P\.IVA|C\.F\.|SCONTRINO\s+N\.|DOC\.|OPERAZIONE\s+N\./i;
 
         // Estrazione descrizione
-        {            console.log("[Descrizione] Inizio estrazione descrizione.");            // Priorità a nomi più comuni di negozi italiani
-            // Migliorata detection di EUROSPIN con varianti OCR comuni - ancora più robusta per errori di riconoscimento
-            const knownMerchants = /EURO\s*SP[I1]N|EUR[O0]\s*SP[I1]N|EU[I1]?R[O0]SP[I1]N|EUROS?P[I1]N\s?[I1]?T|SP[I1]N[I1]T|[I1]?SP[I1]N|EUROSP[I1]N|CONAD|COOP|L[I1]DL|CARREFOUR|ESSELUNGA|AUCHAN|[I1]PER|PENNY|MD|PAM|DECATHLON|[I1]KEA|LEROY\s+MERL[I1]N/i;
-            const merchantNameCandidatePattern = /[A-ZÀ-Ÿ\d.'&-]{2,}(\s+[A-ZÀ-Ÿ\d.'&-]{2,})+/ig; // Pattern generico non ancorato
-            const searchLinesForMerchant = Math.min(lines.length, 15); // Aumentato a 15 righe
-            let merchantFound = false;            // Prima cerchiamo nei nomi noti (priorità massima)
+        {
+            console.log("[Descrizione] Inizio estrazione descrizione.");
+            // Migliorata detection di EUROSPIN con varianti OCR comuni e altri negozi
+            const knownMerchants = /EURO\s*SPIN|EUR[O0]\s*SP[I1]N|EU[I1]?ROSP[I1]N|EUROS?P[I1]N\s?[I1]?T|SPIN[I1]T|[I1]?SPIN|EUROSPIN|CONAD|COOP|LIDL|CARREFOUR|ESSELUNGA|AUCHAN|IPER|PENNY|MD|PAM|DECATHLON|IKEA|LEROY\s+MERLIN/i;
+            const merchantNameCandidatePattern = /[A-ZÀ-Ÿ\d.'&\s-]{5,}/ig; // Pattern generico più flessibile, almeno 5 caratteri
+            const searchLinesForMerchant = Math.min(lines.length, 15); 
+            let merchantFound = false;
+
+            // Prima cerchiamo nei nomi noti (priorità massima)
             for (let i = 0; i < searchLinesForMerchant; i++) {
                 const lineToSearch = lines[i].trim();
                 if (!lineToSearch) continue;
@@ -234,31 +235,36 @@ document.addEventListener('DOMContentLoaded', () => {
                     let knownMatch = lineToSearch.match(knownMerchants);
                     if (knownMatch) {
                         newItem.descrizione = knownMatch[0];
-                        // Uniforma alcuni nomi riconosciuti
-                        if(/SP[I1]N|EURO/i.test(newItem.descrizione)) {
+                        // Uniforma alcuni nomi riconosciuti, specialmente per EUROSPIN
+                        if(/EURO\s*SPIN|EUR[O0]\s*SP[I1]N|EU[I1]?ROSP[I1]N|EUROS?P[I1]N|SPIN[I1]T|[I1]?SPIN/i.test(newItem.descrizione)) {
                             newItem.descrizione = "EUROSPIN";
-                        } else if(/CONAD|C0NAD/i.test(newItem.descrizione)) {
-                            newItem.descrizione = "CONAD";
-                        } else if(/L[I1]DL/i.test(newItem.descrizione)) {
-                            newItem.descrizione = "LIDL";
                         }
-                        console.log(`[Descrizione] Trovato commerciante noto: "${newItem.descrizione}" sulla riga ${i}: "${lineToSearch}"`);
+                        console.log(`[Descrizione] Trovato commerciante noto: "${newItem.descrizione}" sulla riga ${i}`);
                         merchantFound = true;
                         break;
                     }
                 }
                 
-                // Cerca anche nelle parti di una riga (es. "EURO" e "SPIN" su righe diverse)
+                // Cerca anche nelle parti di una riga (es. "EURO" e "SPIN" su righe diverse o con errori OCR)
                 if (!merchantFound && (
-                    /EURO/i.test(lineToSearch) ||
-                    /SP[I1]N/i.test(lineToSearch) ||
-                    /1SP[I1]N/i.test(lineToSearch) ||
-                    /[I1]SP[I1]N/i.test(lineToSearch)
+                    /EUR[O0]/i.test(lineToSearch) || // EURO, ERO, EUR0...
+                    /SP[I1L]N/i.test(lineToSearch) || // SPIN, SPLN, SP1N...
+                    /[1I]SP[I1L]N/i.test(lineToSearch) || // 1SPIN, ISPIN, 1SPLN...
+                    /EUROSP/i.test(lineToSearch) || // Parte iniziale
+                    /ROSPIN/i.test(lineToSearch)    // Parte finale
                 )) {
-                    console.log(`[Descrizione] Trovato indizio di EUROSPIN sulla riga ${i}: "${lineToSearch}"`);
-                    newItem.descrizione = "EUROSPIN";
-                    merchantFound = true;
-                    break;
+                    // Se trovi un forte indizio di EUROSPIN, assegnalo direttamente
+                    if (/(EUR[O0]\s*SP[I1L]N)|(EUROSP)|(ROSPIN)/i.test(lineToSearch)) {
+                        newItem.descrizione = "EUROSPIN";
+                        console.log(`[Descrizione] Trovato EUROSPIN (match parziale forte): "${lineToSearch}" sulla riga ${i}`);
+                        merchantFound = true;
+                        break;
+                    } else {
+                        // Altrimenti, se è solo un indizio più debole, preparalo ma continua a cercare
+                        newItem.descrizione = "EUROSPIN"; // Potenziale EUROSPIN
+                        console.log(`[Descrizione] Trovato indizio di EUROSPIN (match parziale debole): "${lineToSearch}" sulla riga ${i}`);
+                        // Non impostare merchantFound = true qui, per dare priorità a match completi successivi
+                    }
                 }
             }
             
