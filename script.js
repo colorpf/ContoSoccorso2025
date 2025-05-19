@@ -63,32 +63,46 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function processImageWithTesseract(imageFile) {
-        if (!window.Tesseract) { // Controlla window.Tesseract
-            statusDiv.textContent = "Errore: Tesseract.js non è caricato.";
-            console.error("Tesseract.js non è disponibile.");
+        if (!window.Tesseract) {
+            statusDiv.textContent = 'Tesseract.js non è caricato.';
+            console.error('Tesseract.js non è caricato.');
             return;
         }
 
         statusDiv.textContent = 'Avvio OCR... (potrebbe richiedere un po\' di tempo)';
         parsedDataDiv.textContent = 'Elaborazione immagine...';
 
+        const customUserWordsVirtualPath = "custom_dictionary.txt";
+
         try {
             const worker = await Tesseract.createWorker('ita', 1, {
-                langPath: './tessdata', // <--- MODIFICA QUI: Aggiungi questa riga
-                logger: m => {
-                    console.log(m);
-                    if (m.status === 'recognizing text') {
-                        const progress = Math.round(m.progress * 100);
-                        statusDiv.textContent = `Riconoscimento testo: ${progress}%`;
-                        parsedDataDiv.textContent = `Progresso OCR: ${progress}%`;
-                    } else if (m.status === 'loading language model') {
-                        statusDiv.textContent = 'Caricamento modello lingua italiana...';
-                    } else {
-                        statusDiv.textContent = `Stato OCR: ${m.status}`;
-                    }
-                }
+                // logger: m => console.log(m), // Riduci i log se necessario
             });
 
+            try {
+                const response = await fetch('ita.special-words'); // Carica il file dalla stessa directory dell'HTML
+                if (response.ok) {
+                    const fileContentAsText = await response.text();
+                    const textEncoder = new TextEncoder();
+                    const fileDataAsUint8Array = textEncoder.encode(fileContentAsText);
+                    
+                    worker.FS('writeFile', customUserWordsVirtualPath, fileDataAsUint8Array);
+                    
+                    await worker.setParameters({
+                        tessedit_user_words_file: customUserWordsVirtualPath
+                    });
+                    console.log(`Dizionario personalizzato '${customUserWordsVirtualPath}' caricato e configurato.`);
+                    statusDiv.textContent = 'Avvio OCR con dizionario personalizzato...';
+                } else {
+                    console.warn(`Impossibile caricare 'ita.special-words'. Status: ${response.status}`);
+                    statusDiv.textContent = 'Avvio OCR (dizionario non caricato)...';
+                }
+            } catch (e) {
+                console.warn("Errore caricamento dizionario 'ita.special-words':", e);
+                statusDiv.textContent = 'Avvio OCR (errore dizionario)...';
+            }
+
+            // Esecuzione dell'OCR
             const { data: { text } } = await worker.recognize(imageFile);
             await worker.terminate();
 
