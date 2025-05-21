@@ -72,38 +72,48 @@ document.addEventListener('DOMContentLoaded', () => {
         statusDiv.textContent = 'Avvio OCR... (potrebbe richiedere un po\' di tempo)';
         parsedDataDiv.textContent = 'Elaborazione immagine...';
 
-        const customUserWordsVirtualPath = "custom_dictionary.txt"; // Il nome del file nel FS virtuale
+        const customUserWordsVirtualPath = "custom_dictionary.txt";
 
         try {
-            const worker = new Tesseract.TesseractWorker();
-
-            // Parametri che DEVONO essere impostati durante l'inizializzazione
-            const initialParams = {
+            // Parametri che DEVONO essere impostati durante la creazione del worker
+            const initialWorkerParams = {
                 // logger: m => console.log(m), // Abilita per debug dettagliato di Tesseract
                 load_system_dawg: '1',
                 load_freq_dawg: '1',
                 language_model_ngram_on: '1',
                 textord_tabfind_vertical_text: '1', 
                 textord_tabfind_force_vertical_text: '0',
-                // tessedit_user_words_file verrà aggiunto qui dopo il caricamento del dizionario
+                // Nota: tessedit_user_words_file verrà impostato tramite setParameters dopo la scrittura nel FS
+            };
+
+            // Creare il worker con i parametri di inizializzazione
+            // OEM 1 è LSTM_ONLY per Tesseract 4.x+
+            const worker = await Tesseract.createWorker('ita', 1, initialWorkerParams);
+            console.log("Worker Tesseract creato con parametri iniziali:", initialWorkerParams);
+
+            // Parametri da impostare dinamicamente dopo la creazione del worker e il caricamento del dizionario
+            const dynamicParams = {
+                tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,:/\\\\-+%€$£&*()<>[]{}=@#"\\\'àèéìòù ',
+                tessedit_pageseg_mode: '6', 
+                preserve_interword_spaces: '1',
             };
 
             try {
                 const response = await fetch('ita.special-words'); // Carica il file dalla root del server web
                 if (response.ok) {
                     let fileContentAsText = await response.text();
-                    // Rimuovi righe di commento
                     fileContentAsText = fileContentAsText.split('\n').filter(line => !line.trim().startsWith('//')).join('\n');
 
                     const textEncoder = new TextEncoder();
                     const fileDataAsUint8Array = textEncoder.encode(fileContentAsText);
                     
                     // Scrivi il file nel FS virtuale di Tesseract
-                    // FS è sincrono una volta che il worker è istanziato
-                    worker.FS('writeFile', customUserWordsVirtualPath, fileDataAsUint8Array);
+                    await worker.FS('writeFile', customUserWordsVirtualPath, fileDataAsUint8Array);
+                    console.log(`Dizionario personalizzato '${customUserWordsVirtualPath}' scritto nel FS virtuale.`);
                     
-                    initialParams.tessedit_user_words_file = customUserWordsVirtualPath;
-                    console.log(`Dizionario personalizzato '${customUserWordsVirtualPath}' scritto nel FS virtuale e aggiunto ai parametri iniziali.`);
+                    // Aggiungi il percorso del dizionario utente ai parametri dinamici
+                    dynamicParams.tessedit_user_words_file = customUserWordsVirtualPath;
+                    
                 } else {
                     console.warn(`Impossibile caricare 'ita.special-words'. Status: ${response.status}. OCR procederà senza dizionario personalizzato.`);
                     statusDiv.textContent = 'Avvio OCR (dizionario personalizzato non caricato)...';
@@ -113,22 +123,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 statusDiv.textContent = 'Avvio OCR (errore caricamento dizionario personalizzato)...';
             }
 
-            await worker.loadLanguage('ita');
-            console.log("Lingua 'ita' caricata.");
-
-            // Inizializza Tesseract con la lingua, OEM e i parametri iniziali
-            // OEM 1 corrisponde a OEM_TESSERACT_LSTM_COMBINED (o OEM_DEFAULT in versioni più recenti)
-            await worker.initialize('ita', 1, initialParams); 
-            console.log("Worker Tesseract inizializzato con parametri:", initialParams);
-
-            // Parametri che possono essere impostati dinamicamente dopo l'inizializzazione
-            const dynamicParams = {
-                tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,:/\\-+%€$£&*()<>[]{}=@#"\\\'àèéìòù ',
-                tessedit_pageseg_mode: '6', 
-                preserve_interword_spaces: '1',
-            };
+            // Applica i parametri dinamici (incluso il file dizionario utente, se caricato)
             await worker.setParameters(dynamicParams);
-            console.log("Parametri dinamici impostati:", dynamicParams);
+            console.log("Parametri dinamici (incluso dizionario) impostati:", dynamicParams);
 
             // Esecuzione dell'OCR
             const { data: { text } } = await worker.recognize(imageFile);
