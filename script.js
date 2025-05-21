@@ -72,7 +72,8 @@ document.addEventListener('DOMContentLoaded', () => {
         statusDiv.textContent = 'Avvio OCR... (potrebbe richiedere un po\' di tempo)';
         parsedDataDiv.textContent = 'Elaborazione immagine...';
 
-        const customUserWordsVirtualPath = "custom_dictionary.txt";
+        // const customUserWordsVirtualPath = "custom_dictionary.txt"; // Old relative path
+        const customUserWordsVirtualPath = "/custom_dictionary.txt"; // Try absolute virtual path
 
         try {
             // Parametri che DEVONO essere impostati durante la creazione del worker
@@ -107,9 +108,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     const textEncoder = new TextEncoder();
                     const fileDataAsUint8Array = textEncoder.encode(fileContentAsText);
                     
-                    // Scrivi il file nel FS virtuale di Tesseract
+                    console.log(`Tentativo di scrittura del dizionario personalizzato nel FS virtuale. Percorso: '${customUserWordsVirtualPath}', Dimensione: ${fileDataAsUint8Array.byteLength} bytes.`);
                     await worker.FS('writeFile', customUserWordsVirtualPath, fileDataAsUint8Array);
-                    console.log(`Dizionario personalizzato '${customUserWordsVirtualPath}' scritto nel FS virtuale.`);
+                    console.log(`Dizionario personalizzato '${customUserWordsVirtualPath}' scritto con successo nel FS virtuale.`);
                     
                     // Aggiungi il percorso del dizionario utente ai parametri dinamici
                     dynamicParams.tessedit_user_words_file = customUserWordsVirtualPath;
@@ -119,13 +120,19 @@ document.addEventListener('DOMContentLoaded', () => {
                     statusDiv.textContent = 'Avvio OCR (dizionario personalizzato non caricato)...';
                 }
             } catch (e) {
-                console.warn("Errore durante il caricamento o la scrittura del dizionario personalizzato 'ita.special-words':", e);
-                statusDiv.textContent = 'Avvio OCR (errore caricamento dizionario personalizzato)...';
+                console.error("Errore critico durante il caricamento o la scrittura del dizionario personalizzato 'ita.special-words' nel FS virtuale:", e);
+                statusDiv.textContent = 'Avvio OCR (errore grave caricamento/scrittura dizionario personalizzato)...';
+                // Non impostare tessedit_user_words_file se il caricamento/scrittura fallisce
             }
 
-            // Applica i parametri dinamici (incluso il file dizionario utente, se caricato)
+            // Applica i parametri dinamici (incluso il file dizionario utente, se caricato e scritto correttamente)
+            if (dynamicParams.tessedit_user_words_file) {
+                console.log("Tentativo di impostare parametri dinamici con dizionario:", dynamicParams);
+            } else {
+                console.log("Tentativo di impostare parametri dinamici SENZA dizionario (caricamento/scrittura falliti):", dynamicParams);
+            }
             await worker.setParameters(dynamicParams);
-            console.log("Parametri dinamici (incluso dizionario) impostati:", dynamicParams);
+            console.log("Parametri dinamici impostati.");
 
             // Esecuzione dell'OCR
             const { data: { text } } = await worker.recognize(imageFile);
