@@ -72,8 +72,7 @@ document.addEventListener('DOMContentLoaded', () => {
         statusDiv.textContent = 'Avvio OCR... (potrebbe richiedere un po\' di tempo)';
         parsedDataDiv.textContent = 'Elaborazione immagine...';
 
-        // const customUserWordsVirtualPath = "custom_dictionary.txt"; // Old relative path
-        const customUserWordsVirtualPath = "/custom_dictionary.txt"; // Try absolute virtual path
+        const customUserWordsVirtualPath = "user_defined_words.txt"; // Changed to a unique name
 
         try {
             // Parametri che DEVONO essere impostati durante la creazione del worker
