@@ -99,7 +99,7 @@ document.addEventListener('DOMContentLoaded', () => {
             };
 
             try {
-                const response = await fetch('ita.special-words'); // Carica il file dalla root del server web
+                const response = await fetch('custom-words.txt'); // Carica il file custom dalla root
                 if (response.ok) {
                     let fileContentAsText = await response.text();
                     fileContentAsText = fileContentAsText.split('\n').filter(line => !line.trim().startsWith('//')).join('\n');
@@ -115,11 +115,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     dynamicParams.tessedit_user_words_file = customUserWordsVirtualPath;
                     
                 } else {
-                    console.warn(`Impossibile caricare 'ita.special-words'. Status: ${response.status}. OCR procederà senza dizionario personalizzato.`);
+                    console.warn(`Impossibile caricare 'custom-words.txt'. Status: ${response.status}. OCR procederà senza dizionario personalizzato.`);
                     statusDiv.textContent = 'Avvio OCR (dizionario personalizzato non caricato)...';
                 }
             } catch (e) {
-                console.error("Errore critico durante il caricamento o la scrittura del dizionario personalizzato 'ita.special-words' nel FS virtuale:", e);
+                console.error("Errore critico durante il caricamento o la scrittura del dizionario personalizzato 'custom-words.txt' nel FS virtuale:", e);
                 statusDiv.textContent = 'Avvio OCR (errore grave caricamento/scrittura dizionario personalizzato)...';
                 // Non impostare tessedit_user_words_file se il caricamento/scrittura fallisce
             }
