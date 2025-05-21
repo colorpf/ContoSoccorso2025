@@ -75,66 +75,53 @@ document.addEventListener('DOMContentLoaded', () => {
         const customUserWordsVirtualPath = "custom_dictionary.txt";
 
         try {
-            const worker = await Tesseract.createWorker('ita', 1, {
-                // logger: m => console.log(m), // Riduci i log se necessario
-            });
-
-            // Configurazioni OCR per migliorare il riconoscimento degli scontrini
-            const baseOcrParams = {
-                tessjs_create_hocr: '0',
-                tessjs_create_tsv: '0',
-                tessjs_create_pdf: '0',
-                tessjs_create_boxfile: '0',
-                tessjs_create_unlv: '0',
-                tessjs_create_osd: '0',
-                tessjs_textonly_pdf: '0',
-                
-                // Parametri OCR specifici per migliorare il riconoscimento di scontrini
-                tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,:/\\-+%€$£&*()<>[]{}=@#"\'àèéìòù ',
-                tessedit_pageseg_mode: '6', // 6 = Assume a single uniform block of text
-                // tessedit_ocr_engine_mode: '2', // 2 = Only use LSTM neural network
-                preserve_interword_spaces: '1',
-                language_model_penalty_non_freq_dict_word: '0.1',
-                language_model_penalty_non_dict_word: '0.15'
+            // Parametri da usare durante la creazione del worker (devono essere specificati qui)
+            const workerOptions = {
+                // logger: m => console.log(m), // Abilita per debug dettagliato di Tesseract
+                load_system_dawg: '1',
+                load_freq_dawg: '1',
+                language_model_ngram_on: '1' 
             };
 
-            // Applica i parametri base
-            await worker.setParameters(baseOcrParams);
+            const worker = await Tesseract.createWorker('ita', 1, workerOptions);
 
-            // Carica e configura il dizionario personalizzato
+            // Parametri da impostare dopo la creazione del worker e dopo aver scritto il dizionario custom
+            const runtimeParams = {
+                tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,:/\\\\-+%€$£&*()<>[]{}=@#"\\\'àèéìòù ',
+                tessedit_pageseg_mode: '6', 
+                preserve_interword_spaces: '1',
+                textord_tabfind_vertical_text: '1', // Questi erano precedentemente in setParameters e dovrebbero essere ok qui
+                textord_tabfind_force_vertical_text: '0'
+                // Nota: tessedit_user_words_file verrà aggiunto a runtimeParams dopo il caricamento del file
+            };
+
             try {
-                const response = await fetch('ita.special-words'); // Carica il file dalla stessa directory dell'HTML
+                const response = await fetch('ita.special-words'); 
                 if (response.ok) {
                     let fileContentAsText = await response.text();
-                    // Rimuovi eventuali commenti iniziali dal file dizionario
-                    fileContentAsText = fileContentAsText.split('\n').filter(line => !line.trim().startsWith('//')).join('\n');
+                    fileContentAsText = fileContentAsText.split('\\n').filter(line => !line.trim().startsWith('//')).join('\\n');
 
                     const textEncoder = new TextEncoder();
                     const fileDataAsUint8Array = textEncoder.encode(fileContentAsText);
                     
                     worker.FS('writeFile', customUserWordsVirtualPath, fileDataAsUint8Array);
                     
-                    // Migliora l'integrazione del dizionario configurando i parametri aggiuntivi
-                    await worker.setParameters({
-                        tessedit_user_words_file: customUserWordsVirtualPath,
-                        load_system_dawg: '1',
-                        load_freq_dawg: '1',
-                        user_words_suffix: 'user-words',
-                        user_patterns_suffix: 'user-patterns',
-                        language_model_ngram_on: '1',
-                        textord_tabfind_vertical_text: '1',
-                        textord_tabfind_force_vertical_text: '0',
-                    });
-                    console.log(`Dizionario personalizzato '${customUserWordsVirtualPath}' caricato e configurato.`);
-                    statusDiv.textContent = 'Avvio OCR con dizionario personalizzato...';
+                    // Aggiungi il parametro del dizionario utente ai parametri di runtime
+                    runtimeParams.tessedit_user_words_file = customUserWordsVirtualPath;
+                    
+                    console.log(`Dizionario personalizzato '${customUserWordsVirtualPath}' scritto nel FS virtuale.`);
                 } else {
                     console.warn(`Impossibile caricare 'ita.special-words'. Status: ${response.status}`);
-                    statusDiv.textContent = 'Avvio OCR (dizionario non caricato)...';
+                    statusDiv.textContent = 'Avvio OCR (dizionario personalizzato non caricato)...';
                 }
             } catch (e) {
-                console.warn("Errore caricamento dizionario 'ita.special-words':", e);
-                statusDiv.textContent = 'Avvio OCR (errore dizionario)...';
+                console.warn("Errore durante il caricamento o la scrittura del dizionario personalizzato 'ita.special-words':", e);
+                statusDiv.textContent = 'Avvio OCR (errore caricamento dizionario personalizzato)...';
             }
+
+            // Applica i parametri di runtime
+            await worker.setParameters(runtimeParams);
+            console.log("Parametri di runtime impostati:", runtimeParams);
 
             // Esecuzione dell'OCR
             const { data: { text } } = await worker.recognize(imageFile);
@@ -221,7 +208,7 @@ document.addEventListener('DOMContentLoaded', () => {
         {
             console.log("[Descrizione] Inizio estrazione descrizione.");
             // Migliorata detection di EUROSPIN con varianti OCR comuni e altri negozi
-            const knownMerchants = /EURO\s*SPIN|EUR[O0]\s*SP[I1]N|EU[I1]?ROSP[I1]N|EUROS?P[I1]N\s?[I1]?T|SPIN[I1]T|[I1]?SPIN|EUROSPIN|CONAD|COOP|LIDL|CARREFOUR|ESSELUNGA|AUCHAN|IPER|PENNY|MD|PAM|DECATHLON|IKEA|LEROY\s+MERLIN/i;
+            const knownMerchants = /EURO\s*SPIN|EUR[O0]\s*SP[I1]N|EU[I1]?ROSP[I1]N|EUROS?P[I1]N|SPIN[I1]T|[I1]?SPIN|EUROSPIN|CONAD|COOP|LIDL|CARREFOUR|ESSELUNGA|AUCHAN|IPER|PENNY|MD|PAM|DECATHLON|IKEA|LEROY\s+MERLIN/i;
             const merchantNameCandidatePattern = /[A-ZÀ-Ÿ\d.'&\s-]{5,}/ig; // Pattern generico più flessibile, almeno 5 caratteri
             const searchLinesForMerchant = Math.min(lines.length, 15); 
             let merchantFound = false;
@@ -374,7 +361,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const lineContent = lines[i].trim();
             if (!lineContent) continue;
 
-            // Evita di aggiungere come fallback importi già considerati dalle keyword (se la riga contiene una keyword)
+            // Evita di aggiungere come fallback importti già considerati dalle keyword (se la riga contiene una keyword)
             let lineContainsTotalKeyword = false;
             for (const kwConfig of totalKeywordsConfig) {
                 if (kwConfig.regex.test(lineContent)) {
