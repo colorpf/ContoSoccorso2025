@@ -105,23 +105,25 @@ document.addEventListener('DOMContentLoaded', () => {
             // --- INIZIO PATCH PER LINGUA CUSTOM LOCALE ---
             // Usa la versione avanzata di Tesseract.createWorker per specificare il percorso locale dei dati lingua
             
-            let langPathValue = new URL('tessdata', window.location.href).toString();
-            // Ensure langPathValue ends with a slash, as Tesseract.js might expect it for directory paths.
-            if (!langPathValue.endsWith('/')) {
-                langPathValue += '/';
+            // Usa percorso assoluto per langPath
+            const langPath = new URL('tessdata', window.location.origin).pathname;
+            console.log(`[Tesseract Setup] Using langPath: ${langPath}`);            let worker;
+            try {
+                worker = await Tesseract.createWorker({
+                    langPath: langPath,
+                    gzip: false,
+                    logger: {
+                        debug: msg => console.log('[Tesseract Debug]', msg),
+                        error: msg => console.error('[Tesseract Error]', msg),
+                        info: msg => console.info('[Tesseract Info]', msg),
+                        warn: msg => console.warn('[Tesseract Warning]', msg)
+                    }
+                });
+                console.log("[Tesseract Setup] Worker object created with options.");
+            } catch (e) {
+                console.error("[Tesseract Setup Error] Failed to create worker:", e);
+                throw e;
             }
-            console.log(`[Tesseract Setup] Using langPath: ${langPathValue} (absolute)`);            const worker = await Tesseract.createWorker({
-                langPath: langPathValue,
-                gzip: false, // Crucial: tells Tesseract.js not to expect .gz files and not to add .gz to the filename it looks for
-                // logger: globalTesseractLogger, // TEMPORANEAMENTE RIMOSSO per testare DataCloneError
-                // Usiamo i worker e core direttamente da CDN
-                workerPath: 'https://unpkg.com/tesseract.js@5.0.3/dist/worker.min.js',
-                corePath: 'https://unpkg.com/tesseract.js@5.0.3/dist/tesseract-core.wasm.js',
-                // Optional: If you host tesseract-core.wasm.js and worker.min.js locally, specify their paths too.
-                // corePath: new URL('path/to/tesseract-core.wasm.js', window.location.href).toString(), // Questo era un commento di esempio, rimosso per chiarezza
-                // workerPath: new URL('path/to/worker.min.js', window.location.href).toString(), // Questo era un commento di esempio, rimosso per chiarezza
-            });
-            console.log("[Tesseract Setup] Worker object created with options.");
 
             console.log("[Tesseract Setup] Attempting to load language 'ita2'.");
             await worker.loadLanguage('ita2');
@@ -177,11 +179,18 @@ document.addEventListener('DOMContentLoaded', () => {
             await worker.setParameters(dynamicParams);
             console.log("Parametri dinamici impostati.");
 
-            // Esecuzione dell'OCR
-            const { data: { text } } = await worker.recognize(imageFile);
-            await worker.terminate();
-
-            rawTextDiv.textContent = `Testo estratto dallo scontrino:\n---------------------------\n${text}`;
+            // Esecuzione dell'OCR            let recognitionResult;
+            try {
+                recognitionResult = await worker.recognize(imageFile);
+                const { data: { text } } = recognitionResult;
+                rawTextDiv.textContent = `Testo estratto dallo scontrino:\n---------------------------\n${text}`;
+            } finally {
+                // Make sure we always terminate the worker, even if recognition fails
+                if (worker) {
+                    await worker.terminate();
+                    console.log("[Tesseract Cleanup] Worker terminated.");
+                }
+            }
             statusDiv.textContent = 'Testo estratto! Prova di interpretazione...';
             
             const scontrinoData = parseScontrinoText(text);
