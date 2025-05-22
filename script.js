@@ -88,7 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Creare il worker con i parametri di inizializzazione
             // OEM 1 è LSTM_ONLY per Tesseract 4.x+
-            const worker = await Tesseract.createWorker('ita', 1, initialWorkerParams);
+            const worker = await Tesseract.createWorker('ita2', 1, initialWorkerParams);
             console.log("Worker Tesseract creato con parametri iniziali:", initialWorkerParams);
 
             // Parametri da impostare dinamicamente dopo la creazione del worker e il caricamento del dizionario
