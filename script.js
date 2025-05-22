@@ -90,11 +90,41 @@ document.addEventListener('DOMContentLoaded', () => {
             // OEM 1 è LSTM_ONLY per Tesseract 4.x+
             // --- INIZIO PATCH PER LINGUA CUSTOM LOCALE ---
             // Usa la versione avanzata di Tesseract.createWorker per specificare il percorso locale dei dati lingua
+            
+            let langPathValue = new URL('tessdata', window.location.href).toString();
+            // Ensure langPathValue ends with a slash, as Tesseract.js might expect it for directory paths.
+            if (!langPathValue.endsWith('/')) {
+                langPathValue += '/';
+            }
+            console.log(`[Tesseract Setup] Using langPath: ${langPathValue} (absolute)`);
+
             const worker = await Tesseract.createWorker({
-                langPath: 'tessdata', // percorso relativo alla root del progetto
+                langPath: langPathValue,
+                gzip: false, // Crucial: tells Tesseract.js not to expect .gz files and not to add .gz to the filename it looks for
+                logger: m => {
+                    console.log('[Tesseract Worker Log]', m);
+                    if (m.status === 'loading language model' || m.status === 'initializing tesseract' || m.status === 'initialized tesseract' || m.status === 'recognizing text') {
+                        const progressPercentage = m.progress !== undefined ? (m.progress * 100).toFixed(2) + '%' : 'N/A';
+                        console.log(`[Tesseract Worker Status] ${m.status}, Progress: ${progressPercentage}`);
+                    }
+                    if (m.status === 'error') {
+                        console.error('[Tesseract Worker Error]', m);
+                    }
+                },
+                // Optional: If you host tesseract-core.wasm.js and worker.min.js locally, specify their paths too.
+                // corePath: new URL('path/to/tesseract-core.wasm.js', window.location.href).toString(),
+                // workerPath: new URL('path/to/worker.min.js', window.location.href).toString(),
             });
+            console.log("[Tesseract Setup] Worker object created with options.");
+
+            console.log("[Tesseract Setup] Attempting to load language 'ita2'.");
             await worker.loadLanguage('ita2');
+            console.log("[Tesseract Setup] loadLanguage('ita2') promise resolved.");
+
+            console.log("[Tesseract Setup] Attempting to initialize 'ita2'.");
             await worker.initialize('ita2');
+            console.log("[Tesseract Setup] initialize('ita2') promise resolved.");
+            
             await worker.setParameters(initialWorkerParams);
             console.log("Worker Tesseract creato con parametri iniziali:", initialWorkerParams);
             // --- FINE PATCH ---
