@@ -1,3 +1,17 @@
+// Definisci la funzione logger globalmente
+function globalTesseractLogger(m) {
+    console.log('[Tesseract Global Log]', m); // Logga sempre il messaggio grezzo per debug
+    if (m && m.status) { // Controlla che m e m.status esistano
+        if (m.status === 'loading language model' || m.status === 'initializing tesseract' || m.status === 'initialized tesseract' || m.status === 'recognizing text') {
+            const progressPercentage = m.progress !== undefined ? (m.progress * 100).toFixed(2) + '%' : 'N/A';
+            console.log(`[Tesseract Worker Status] ${m.status}, Progress: ${progressPercentage}`);
+        }
+        if (m.status === 'error') {
+            console.error('[Tesseract Worker Error]', m.data || m); // Logga m.data se disponibile, altrimenti l'oggetto m intero
+        }
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     const startButton = document.getElementById('startButton');
     const statusDiv = document.getElementById('status');
@@ -62,20 +76,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Definisci la funzione logger separatamente
-    function myTesseractLogger(m) {
-        console.log('[Tesseract Worker Log]', m); // Logga sempre il messaggio grezzo per debug
-        if (m && m.status) { // Controlla che m e m.status esistano
-            if (m.status === 'loading language model' || m.status === 'initializing tesseract' || m.status === 'initialized tesseract' || m.status === 'recognizing text') {
-                const progressPercentage = m.progress !== undefined ? (m.progress * 100).toFixed(2) + '%' : 'N/A';
-                console.log(`[Tesseract Worker Status] ${m.status}, Progress: ${progressPercentage}`);
-            }
-            if (m.status === 'error') {
-                console.error('[Tesseract Worker Error]', m.data || m); // Logga m.data se disponibile, altrimenti l'oggetto m intero
-            }
-        }
-    }
-
     async function processImageWithTesseract(imageFile) {
         if (!window.Tesseract) {
             statusDiv.textContent = 'Tesseract.js non è caricato.';
@@ -115,7 +115,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const worker = await Tesseract.createWorker({
                 langPath: langPathValue,
                 gzip: false, // Crucial: tells Tesseract.js not to expect .gz files and not to add .gz to the filename it looks for
-                logger: myTesseractLogger, // Usa la funzione logger definita separatamente
+                logger: globalTesseractLogger, // Usa la funzione logger definita globalmente
                 // Optional: If you host tesseract-core.wasm.js and worker.min.js locally, specify their paths too.
                 // corePath: new URL('path/to/tesseract-core.wasm.js', window.location.href).toString(),
                 // workerPath: new URL('path/to/worker.min.js', window.location.href).toString(),
