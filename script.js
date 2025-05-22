@@ -88,12 +88,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Creare il worker con i parametri di inizializzazione
             // OEM 1 è LSTM_ONLY per Tesseract 4.x+
-            const worker = await Tesseract.createWorker('ita2', 1, initialWorkerParams);
+            // --- INIZIO PATCH PER LINGUA CUSTOM LOCALE ---
+            // Usa la versione avanzata di Tesseract.createWorker per specificare il percorso locale dei dati lingua
+            const worker = await Tesseract.createWorker({
+                langPath: 'tessdata', // percorso relativo alla root del progetto
+            });
+            await worker.loadLanguage('ita2');
+            await worker.initialize('ita2');
+            await worker.setParameters(initialWorkerParams);
             console.log("Worker Tesseract creato con parametri iniziali:", initialWorkerParams);
+            // --- FINE PATCH ---
 
             // Parametri da impostare dinamicamente dopo la creazione del worker e il caricamento del dizionario
             const dynamicParams = {
-                tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,:/\\\\-+%€$£&*()<>[]{}=@#"\\\'àèéìòù ',
+                tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,:/\\-+%€$£&*()<>[]{}=@#"\\\'àèéìòù ',
                 tessedit_pageseg_mode: '6', 
                 preserve_interword_spaces: '1',
             };
