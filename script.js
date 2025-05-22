@@ -110,15 +110,16 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!langPathValue.endsWith('/')) {
                 langPathValue += '/';
             }
-            console.log(`[Tesseract Setup] Using langPath: ${langPathValue} (absolute)`);
-
-            const worker = await Tesseract.createWorker({
+            console.log(`[Tesseract Setup] Using langPath: ${langPathValue} (absolute)`);            const worker = await Tesseract.createWorker({
                 langPath: langPathValue,
                 gzip: false, // Crucial: tells Tesseract.js not to expect .gz files and not to add .gz to the filename it looks for
-                logger: globalTesseractLogger, // Usa la funzione logger definita globalmente
+                // logger: globalTesseractLogger, // TEMPORANEAMENTE RIMOSSO per testare DataCloneError
+                // Usiamo i worker e core direttamente da CDN
+                workerPath: 'https://unpkg.com/tesseract.js@5.0.3/dist/worker.min.js',
+                corePath: 'https://unpkg.com/tesseract.js@5.0.3/dist/tesseract-core.wasm.js',
                 // Optional: If you host tesseract-core.wasm.js and worker.min.js locally, specify their paths too.
-                // corePath: new URL('path/to/tesseract-core.wasm.js', window.location.href).toString(),
-                // workerPath: new URL('path/to/worker.min.js', window.location.href).toString(),
+                // corePath: new URL('path/to/tesseract-core.wasm.js', window.location.href).toString(), // Questo era un commento di esempio, rimosso per chiarezza
+                // workerPath: new URL('path/to/worker.min.js', window.location.href).toString(), // Questo era un commento di esempio, rimosso per chiarezza
             });
             console.log("[Tesseract Setup] Worker object created with options.");
 

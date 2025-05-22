@@ -1,0 +1,24 @@
+{
+  "name": "conto-soccorso-2025",
+  "version": "1.0.0",
+  "description": "",
+  "main": "script.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/colorpf/ContoSoccorso2025.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/colorpf/ContoSoccorso2025/issues"
+  },
+  "homepage": "https://github.com/colorpf/ContoSoccorso2025#readme",
+  "dependencies": {
+    "tesseract.js": "^5.1.1"
+  }
+}
