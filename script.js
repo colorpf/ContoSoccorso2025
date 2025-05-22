@@ -106,18 +106,13 @@ document.addEventListener('DOMContentLoaded', () => {
             // Usa la versione avanzata di Tesseract.createWorker per specificare il percorso locale dei dati lingua
             
             // Usa percorso assoluto per langPath
-            const langPath = new URL('tessdata', window.location.origin).pathname;
+            const langPath = new URL('tessdata/', window.location.origin).toString(); // Modificato per URL completo
             console.log(`[Tesseract Setup] Using langPath: ${langPath}`);            let worker;
             try {
                 worker = await Tesseract.createWorker({
                     langPath: langPath,
-                    gzip: false,
-                    logger: {
-                        debug: msg => console.log('[Tesseract Debug]', msg),
-                        error: msg => console.error('[Tesseract Error]', msg),
-                        info: msg => console.info('[Tesseract Info]', msg),
-                        warn: msg => console.warn('[Tesseract Warning]', msg)
-                    }
+                    gzip: false
+                    // Logger rimosso per tentare di risolvere DataCloneError
                 });
                 console.log("[Tesseract Setup] Worker object created with options.");
             } catch (e) {
