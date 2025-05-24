@@ -13,523 +13,569 @@ function globalTesseractLogger(m) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    const startButton = document.getElementById('startButton');
+    const caricaScontrinoBtn = document.getElementById('caricaScontrinoBtn');
+    const scontrinoInput = document.getElementById('scontrinoInput');
     const statusDiv = document.getElementById('status');
     const rawTextDiv = document.getElementById('rawText');
     const parsedDataDiv = document.getElementById('parsedData');
-    const recordedDataTableBody = document.getElementById('recordedDataBody');
-    const clearListButton = document.getElementById('clearListButton');
-    // const driveButton = document.getElementById('driveButton'); // Assicurati che esista se lo usi
-
-    // Nuovi elementi per caricamento scontrino
-    const caricaScontrinoBtn = document.getElementById('caricaScontrinoBtn');
-    const scontrinoInput = document.getElementById('scontrinoInput');
-
-    // Setup scontrinoInput for image capture (camera and file)
-    if (scontrinoInput) {
-        scontrinoInput.accept = 'image/*'; // Ripristinato: specifica che vogliamo file immagine
-        // scontrinoInput.capture = 'environment'; // Mantenuto commentato: non forzare la fotocamera
-                                                // On desktop, or if no camera, it will still open a file picker.
-    }
-
-    const currentYear = new Date().getFullYear();
-    const storageKey = `recordedData_${currentYear}`;
-    let currentData = loadData(); // Carica i dati esistenti
-    
-    currentData.forEach(item => addRowToTable(item)); // Popola la tabella con i dati caricati
-
-    // Funzione per caricare i dati da localStorage
-    function loadData() {
-        const data = localStorage.getItem(storageKey);
-        return data ? JSON.parse(data) : [];
-    }
-
-    // Funzione per salvare i dati
-    function saveData(dataArray) {
-        try {
-            localStorage.setItem(storageKey, JSON.stringify(dataArray));
-            console.log(`Dati salvati per l'anno ${currentYear} in ${storageKey}`);
-        } catch (e) {
-            console.error("Errore nel salvataggio dei dati:", e);
-            statusDiv.textContent = "Errore: Impossibile salvare i dati. Spazio esaurito?";
-        }
-    }
-
-    // Gestione caricamento scontrino
-    if (caricaScontrinoBtn && scontrinoInput) {
-        caricaScontrinoBtn.addEventListener('click', () => {
-            scontrinoInput.click(); 
-        });
-
-        scontrinoInput.addEventListener('change', async (event) => { // Aggiunto async
-            const file = event.target.files[0];
-            if (file) {
-                statusDiv.textContent = `File selezionato: ${file.name}. Elaborazione OCR in corso...`;
-                rawTextDiv.textContent = `File: ${file.name}`;
-                parsedDataDiv.textContent = "Attendere prego...";
-                
-                await processImageWithTesseract(file); 
-                
-                console.log("File selezionato per OCR:", file);
-            }
-            scontrinoInput.value = ''; 
-        });
-    }
-
-    async function processImageWithTesseract(imageFile) {
-        if (!window.Tesseract) {
-            statusDiv.textContent = 'Tesseract.js non è caricato.';
-            console.error('Tesseract.js non è caricato.');
-            return;
-        }
-
-        statusDiv.textContent = 'Avvio OCR... (potrebbe richiedere un po\' di tempo)';
-        parsedDataDiv.textContent = 'Elaborazione immagine...';
-
-        const customUserWordsVirtualPath = "user_defined_words.txt"; // Changed to a unique name
-
-        try {
-            // Parametri che DEVONO essere impostati durante la creazione del worker
-            const initialWorkerParams = {
-                // logger: m => console.log(m), // Abilita per debug dettagliato di Tesseract
-                load_system_dawg: '1',
-                load_freq_dawg: '1',
-                language_model_ngram_on: '1',
-                textord_tabfind_vertical_text: '1', 
-                textord_tabfind_force_vertical_text: '0',
-                // Nota: tessedit_user_words_file verrà impostato tramite setParameters dopo la scrittura nel FS
-            };
-
-            // Creare il worker con i parametri di inizializzazione
-            // OEM 1 è LSTM_ONLY per Tesseract 4.x+
-            // --- INIZIO PATCH PER LINGUA CUSTOM LOCALE ---
-            // Usa la versione avanzata di Tesseract.createWorker per specificare il percorso locale dei dati lingua
-            
-            // Usa percorso assoluto per langPath
-            const langPath = new URL('tessdata/', window.location.origin).toString(); // Modificato per URL completo
-            console.log(`[Tesseract Setup] Using langPath: ${langPath}`);            let worker;
-            try {
-                worker = await Tesseract.createWorker({
-                    langPath: langPath,
-                    gzip: false
-                    // Logger rimosso per tentare di risolvere DataCloneError
-                });
-                console.log("[Tesseract Setup] Worker object created with options.");
-            } catch (e) {
-                console.error("[Tesseract Setup Error] Failed to create worker:", e);
-                throw e;
-            }
-
-            console.log("[Tesseract Setup] Attempting to load language 'ita2'.");
-            await worker.loadLanguage('ita2');
-            console.log("[Tesseract Setup] loadLanguage('ita2') promise resolved.");
-
-            console.log("[Tesseract Setup] Attempting to initialize 'ita2'.");
-            await worker.initialize('ita2');
-            console.log("[Tesseract Setup] initialize('ita2') promise resolved.");
-            
-            await worker.setParameters(initialWorkerParams);
-            console.log("Worker Tesseract creato con parametri iniziali:", initialWorkerParams);
-            // --- FINE PATCH ---
-
-            // Parametri da impostare dinamicamente dopo la creazione del worker e il caricamento del dizionario
-            const dynamicParams = {
-                tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,:/\\-+%€$£&*()<>[]{}=@#"\\\'àèéìòù ',
-                tessedit_pageseg_mode: '6', 
-                preserve_interword_spaces: '1',
-            };
-
-            try {
-                const response = await fetch('custom-words.txt'); // Carica il file custom dalla root
-                if (response.ok) {
-                    let fileContentAsText = await response.text();
-                    fileContentAsText = fileContentAsText.split('\n').filter(line => !line.trim().startsWith('//')).join('\n');
-
-                    const textEncoder = new TextEncoder();
-                    const fileDataAsUint8Array = textEncoder.encode(fileContentAsText);
-                    
-                    console.log(`Tentativo di scrittura del dizionario personalizzato nel FS virtuale. Percorso: '${customUserWordsVirtualPath}', Dimensione: ${fileDataAsUint8Array.byteLength} bytes.`);
-                    await worker.FS('writeFile', customUserWordsVirtualPath, fileDataAsUint8Array);
-                    console.log(`Dizionario personalizzato '${customUserWordsVirtualPath}' scritto con successo nel FS virtuale.`);
-                    
-                    // Aggiungi il percorso del dizionario utente ai parametri dinamici
-                    dynamicParams.tessedit_user_words_file = customUserWordsVirtualPath;
-                    
-                } else {
-                    console.warn(`Impossibile caricare 'custom-words.txt'. Status: ${response.status}. OCR procederà senza dizionario personalizzato.`);
-                    statusDiv.textContent = 'Avvio OCR (dizionario personalizzato non caricato)...';
-                }
-            } catch (e) {
-                console.error("Errore critico durante il caricamento o la scrittura del dizionario personalizzato 'custom-words.txt' nel FS virtuale:", e);
-                statusDiv.textContent = 'Avvio OCR (errore grave caricamento/scrittura dizionario personalizzato)...';
-                // Non impostare tessedit_user_words_file se il caricamento/scrittura fallisce
-            }
-
-            // Applica i parametri dinamici (incluso il file dizionario utente, se caricato e scritto correttamente)
-            if (dynamicParams.tessedit_user_words_file) {
-                console.log("Tentativo di impostare parametri dinamici con dizionario:", dynamicParams);
-            } else {
-                console.log("Tentativo di impostare parametri dinamici SENZA dizionario (caricamento/scrittura falliti):", dynamicParams);
-            }
-            await worker.setParameters(dynamicParams);
-            console.log("Parametri dinamici impostati.");
-
-            // Esecuzione dell'OCR            let recognitionResult;
-            try {
-                recognitionResult = await worker.recognize(imageFile);
-                const { data: { text } } = recognitionResult;
-                rawTextDiv.textContent = `Testo estratto dallo scontrino:\n---------------------------\n${text}`;
-            } finally {
-                // Make sure we always terminate the worker, even if recognition fails
-                if (worker) {
-                    await worker.terminate();
-                    console.log("[Tesseract Cleanup] Worker terminated.");
-                }
-            }
-            statusDiv.textContent = 'Testo estratto! Prova di interpretazione...';
-            
-            const scontrinoData = parseScontrinoText(text);
-            // parsedDataDiv.textContent = JSON.stringify(scontrinoData, null, 2); // Vecchia visualizzazione JSON
-            if (scontrinoData) {
-                const displayItems = [
-                    `Tipo: ${scontrinoData.type}`,
-                    `Data: ${scontrinoData.data}`,
-                    `Importo: ${scontrinoData.importo}`,
-                    `Categoria: ${scontrinoData.categoria}`,
-                    `Descrizione: ${scontrinoData.descrizione}`
-                ];
-                parsedDataDiv.textContent = displayItems.join('\n');
-            } else {
-                parsedDataDiv.textContent = "Impossibile estrarre dati strutturati dallo scontrino.";
-            }
-
-            if (scontrinoData && scontrinoData.type !== "Non definito" && scontrinoData.importo !== "0.00") {
-                currentData.push(scontrinoData);
-                saveData(currentData);
-                addRowToTable(scontrinoData); 
-                // Se hai una funzione per inviare al foglio, chiamala qui
-                // Esempio: inviaDatiAlFoglio(scontrinoData); 
-                statusDiv.textContent = 'Dati dallo scontrino aggiunti e pronti per invio/salvati.';
-            } else {
-                statusDiv.textContent = 'Testo estratto, ma non sono stati riconosciuti dati validi per la registrazione automatica.';
-            }
-
-        } catch (error) {
-            console.error("Errore durante l'OCR con Tesseract.js:", error);
-            statusDiv.textContent = "Errore durante l'OCR: " + error.message;
-            parsedDataDiv.textContent = "Errore OCR.";
-        }
-    }
 
     function parseScontrinoText(text) {
-        console.log("Testo da analizzare (scontrino):\n", text);
-        let newItem = {
-            type: "Non definito",
-            data: new Date().toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' }),
-            importo: "0.00",
-            categoria: "Scontrino",
-            descrizione: "Scontrino"
-        };
-
-        let potentialAmounts = [];
-        const parseValueToFloat = (valStr) => {
-            if (!valStr) return 0;
-            let cleanedValStr = valStr.replace(/\s/g, '');
-            cleanedValStr = cleanedValStr.replace(/\.(?=\d{3}(?:,|$))/g, '');
-            const normalized = cleanedValStr.replace(',', '.');
-            return parseFloat(normalized) || 0;
-        };
-
-        const lines = text.split('\n');
-        
-        const totalKeywordsConfig = [
-            { regex: /TOTALE\s+COMPLESSIVO/i, priority: 0 },
-            { regex: /TOTALE\s+EURO/i, priority: 0 },
-            { regex: /TOTALE\s+EUR/i, priority: 0 },
-            { regex: /TOTALE\s+SCONTRINO/i, priority: 0 },
-            { regex: /TOTALE\s+DA\s+PAGARE/i, priority: 0 },
-            { regex: /NETTO\s+A\s+PAGARE/i, priority: 0 },
-            { regex: /TOTALE\s+FATTURA/i, priority: 0 },
-
-            { regex: /IMPORTO\s+DA\s+PAGARE/i, priority: 1 },   // Mantenuto - "da pagare" è utile
-            
-            { regex: /TOTALE/i, priority: 2 },            // Keyword generica con priorità minore
-            // { regex: /PAGAMENTO\s+CONTANTE/i, priority: 3 },    // Rimosso come richiesto
-            { regex: /IMPORTO/i, priority: 3 },                 // Mantenuto - 'IMPORTO' generico con priorità bassa
-            // { regex: /PAGATO/i, priority: 3 }                   // Rimosso come richiesto
-        ];
-        
-        const amountRegex = /(\d{1,3}(?:[.,]\d{3})*[.,]\s?\d{1,2})/g;
-        const excludeKeywords = /IVA|ALIQUOTA|IMPOSTA|TAX|SCONTO|RESTO|RESTN|CREDITO|SUBTOTALE|RIEPILOGO\s+ALIQUOTE|BUONO|TRONCARE|NON\s+RISCOSSO|NON\s+PAGATO|CODICE|ARTICOLO|TEL\.|P\.IVA|C\.F\.|SCONTRINO\s+N\.|DOC\.|OPERAZIONE\s+N\./i;
-
-        // Estrazione descrizione
-        {
-            console.log("[Descrizione] Inizio estrazione descrizione.");
-            // Migliorata detection di EUROSPIN con varianti OCR comuni e altri negozi
-            const knownMerchants = /EURO\s*SPIN|EUR[O0]\s*SP[I1]N|EU[I1]?ROSP[I1]N|EUROS?P[I1]N|SPIN[I1]T|[I1]?SPIN|EUROSPIN|CONAD|COOP|LIDL|CARREFOUR|ESSELUNGA|AUCHAN|IPER|PENNY|MD|PAM|DECATHLON|IKEA|LEROY\s+MERLIN/i;
-            const merchantNameCandidatePattern = /[A-ZÀ-Ÿ\d.'&\s-]{5,}/ig; // Pattern generico più flessibile, almeno 5 caratteri
-            const searchLinesForMerchant = Math.min(lines.length, 15); 
-            let merchantFound = false;
-
-            // Prima cerchiamo nei nomi noti (priorità massima)
-            for (let i = 0; i < searchLinesForMerchant; i++) {
-                const lineToSearch = lines[i].trim();
-                if (!lineToSearch) continue;
-                  // Controlla se la riga contiene un merchant noto
-                if (knownMerchants.test(lineToSearch)) {
-                    let knownMatch = lineToSearch.match(knownMerchants);
-                    if (knownMatch) {
-                        newItem.descrizione = knownMatch[0];
-                        // Uniforma alcuni nomi riconosciuti, specialmente per EUROSPIN
-                        if(/EURO\s*SPIN|EUR[O0]\s*SP[I1]N|EU[I1]?ROSP[I1]N|EUROS?P[I1]N|SPIN[I1]T|[I1]?SPIN/i.test(newItem.descrizione)) {
-                            newItem.descrizione = "EUROSPIN";
-                        }
-                        console.log(`[Descrizione] Trovato commerciante noto: "${newItem.descrizione}" sulla riga ${i}`);
-                        merchantFound = true;
-                        break;
-                    }
-                }
-                
-                // Cerca anche nelle parti di una riga (es. "EURO" e "SPIN" su righe diverse o con errori OCR)
-                if (!merchantFound && (
-                    /EUR[O0]/i.test(lineToSearch) || // EURO, ERO, EUR0...
-                    /SP[I1L]N/i.test(lineToSearch) || // SPIN, SPLN, SP1N...
-                    /[1I]SP[I1L]N/i.test(lineToSearch) || // 1SPIN, ISPIN, 1SPLN...
-                    /EUROSP/i.test(lineToSearch) || // Parte iniziale
-                    /ROSPIN/i.test(lineToSearch)    // Parte finale
-                )) {
-                    // Se trovi un forte indizio di EUROSPIN, assegnalo direttamente
-                    if (/(EUR[O0]\s*SP[I1L]N)|(EUROSP)|(ROSPIN)/i.test(lineToSearch)) {
-                        newItem.descrizione = "EUROSPIN";
-                        console.log(`[Descrizione] Trovato EUROSPIN (match parziale forte): "${lineToSearch}" sulla riga ${i}`);
-                        merchantFound = true;
-                        break;
-                    } else {
-                        // Altrimenti, se è solo un indizio più debole, preparalo ma continua a cercare
-                        newItem.descrizione = "EUROSPIN"; // Potenziale EUROSPIN
-                        console.log(`[Descrizione] Trovato indizio di EUROSPIN (match parziale debole): "${lineToSearch}" sulla riga ${i}`);
-                        // Non impostare merchantFound = true qui, per dare priorità a match completi successivi
-                    }
-                }
-            }
-            
-            // Se non è stato trovato un merchant noto, prosegui con il pattern generico
-            if (!merchantFound) {
-                for (let i = 0; i < searchLinesForMerchant; i++) {
-                    const lineToSearch = lines[i].trim();
-                    if (!lineToSearch) continue;
-    
-                    merchantNameCandidatePattern.lastIndex = 0; // Reset per regex globale
-                    let match;
-                    let bestMatchInLine = "";
-
-                while ((match = merchantNameCandidatePattern.exec(lineToSearch)) !== null) {
-                    const currentMatchText = match[0];
-                    // Preferisci corrispondenze più lunghe, evita quelle puramente numeriche o troppo corte
-                    if (currentMatchText.length > bestMatchInLine.length && 
-                        currentMatchText.length >= 5 &&                        !/^\d[\d\s.,]*$/.test(currentMatchText) &&
-                        !/P\.IVA|C\.F\.|VIA|CAP|TEL/i.test(currentMatchText)) { // Evita termini comuni di indirizzi/contatti
-                        bestMatchInLine = currentMatchText;
-                    }
-                }                if (bestMatchInLine) {
-                    newItem.descrizione = bestMatchInLine;
-                    // Logica di pulizia per prefissi OCR errati (es. "ae NOME")
-                    const parts = newItem.descrizione.split(/\s+/); // Split su whitespace
-                    if (parts.length > 1 &&
-                        parts[0].length <= 2 &&
-                        parts[0].match(/^[a-zà-ÿ]+$/) && // prima parola tutta minuscola
-                        parts[1].match(/^[A-ZÀ-Ÿ0-9]/)) { // seconda parola inizia con maiuscola/numero
-                        newItem.descrizione = parts.slice(1).join(" ");
-                        console.log(`[Descrizione] Nome pulito: "${newItem.descrizione}"`);
-                    }
-                    console.log(`[Descrizione] Trovato nome: "${newItem.descrizione}" sulla riga ${i}: "${lineToSearch}"`);
-                    merchantFound = true;
-                    break; 
-                }
-                }
-            }
-            if (!merchantFound) {
-                console.log(`[Descrizione] Nessun nome valido trovato nelle prime ${searchLinesForMerchant} righe. Default: "${newItem.descrizione}"`);
-            }
+        console.log("[Parsing] Testo ricevuto per il parsing (prima di split):", text);
+        // CORRECTED REGEX for line splitting to handle actual newline characters
+        const lines = text.split(/\r\n?|\n/);
+        console.log(`[Parsing] Numero di righe trovate dopo lo split: ${lines.length}`);
+        if (lines.length <= 1 && text.length > 80) { 
+            console.warn("[Parsing] Attenzione: Lo split delle righe ha prodotto poche righe per un testo lungo. Numero di righe: " + lines.length);
         }
+        
+        let importo = "0.00";
+        let dataScontrino = new Date().getFullYear() + '-01-01'; // Placeholder
+        
+        // NUOVA LOGICA RICHIESTA DALL'UTENTE
+        let nomeNegozio = "spesa"; // MODIFICATO DEFAULT
+        let tipoSpesa = "Altro";   // Placeholder per il tipo di spesa (es. "Spese Casa")
+        let categoriaContabile = "Uscite"; // Default per scontrini di spesa
+        let tipoDocumento = "Scontrino"; // Default per il tipo di documento fiscale
 
-        // 1. Raccolta importti guidata da parole chiave
-        for (let i = 0; i < lines.length; i++) {
-            const trimmedLine = lines[i].trim();
-            if (!trimmedLine) continue;
+        // --- 1. ESTRAZIONE TIPO DOCUMENTO (Fattura, Scontrino Fiscale, ecc.) ---
+        const tipoDocKeywordsDefinition = {
+            "Fattura": ["FATTURA"],
+            "Ricevuta Non Fiscale": ["RICEVUTA NON FISCALE", "RICEVUTA N.F."],
+            "Ricevuta Fiscale": ["RICEVUTA FISCALE", "RIC. FISC."],
+            "Scontrino Fiscale": ["SCONTRINO FISCALE", "SCONTR. FISCALE", "DOC. COMMERCIALE", "DOCUMENTO COMMERCIALE"],
+            "Scontrino": ["SCONTRINO N.", "SCONTRINO NUMERO", "SCONTRINO"]
+        };
+        let tipoDocTrovato = false;
+        const tipoDocSearchOrder = ["Fattura", "Ricevuta Non Fiscale", "Ricevuta Fiscale", "Scontrino Fiscale", "Scontrino"];
 
-            for (const kwConfig of totalKeywordsConfig) {
-                if (kwConfig.regex.test(trimmedLine)) {
-                    // Parola chiave trovata sulla riga corrente (trimmedLine)
-                    if (!excludeKeywords.test(trimmedLine)) {
-                        amountRegex.lastIndex = 0;
-                        let match;
-                        while ((match = amountRegex.exec(trimmedLine)) !== null) {
-                            potentialAmounts.push({
-                                value: match[1],
-                                priority: kwConfig.priority,
-                                lineContext: trimmedLine,
-                                debugSource: `Keyword sulla stessa riga: ${kwConfig.regex.toString()} (prio ${kwConfig.priority})`
-                            });
-                        }
-                    } else {
-                        console.log(`Riga "${trimmedLine}" contiene keyword ${kwConfig.regex.toString()} ma anche una excludeKeyword. Importi ignorati da questa riga per questa keyword.`);
-                    }                    // Cerca importi nelle 5 righe successive, con logica di priorità affinata
-                    for (let j = 1; j <= 5 && (i + j) < lines.length; j++) {
-                        const nextLine = lines[i + j].trim();
-                        if (!nextLine) continue;
-
-                        if (!excludeKeywords.test(nextLine)) {
-                            amountRegex.lastIndex = 0;
-                            let matchAmount;
-                            while ((matchAmount = amountRegex.exec(nextLine)) !== null) {
-                                let amountInNextLine = matchAmount[1];
-                                // Default: eredita priorità dalla keyword che ha attivato la ricerca
-                                let assignedPriority = kwConfig.priority; 
-                                let sourceInfo = `Importo su riga ${i+j} (vicino a keyword '${kwConfig.regex.toString()}' su riga ${i}, eredita prio ${assignedPriority})`;
-                                
-                                // Controlla se 'nextLine' stessa contiene una keyword da totalKeywordsConfig
-                                for (const nextKwConfig of totalKeywordsConfig) {
-                                    if (nextKwConfig.regex.test(nextLine)) {
-                                        // Se nextLine ha una sua keyword, usa la priorità di *quella* keyword.
-                                        assignedPriority = nextKwConfig.priority; 
-                                        sourceInfo = `Importo su riga ${i+j} (match diretto con keyword '${nextKwConfig.regex.toString()}' prio ${assignedPriority})`;
-                                        break; 
-                                    }
-                                }
-                                
-                                potentialAmounts.push({
-                                    value: amountInNextLine,
-                                    priority: assignedPriority, // Usa la priorità determinata
-                                    lineContext: nextLine,
-                                    debugSource: sourceInfo
-                                });
-                            }
-                        } else {
-                             console.log(`Riga successiva "${nextLine}" (per keyword ${kwConfig.regex.toString()}) è esclusa.`);
-                        }
+        for (const key of tipoDocSearchOrder) {
+            if (tipoDocTrovato) break;
+            for (const line of lines) {
+                const upperLine = line.toUpperCase();
+                if (tipoDocKeywordsDefinition[key].some(kw => upperLine.includes(kw))) {
+                    if (key === "Scontrino" && tipoDocumento === "Scontrino Fiscale") { 
+                        continue;
                     }
-                }
-            }
-        }
-
-        // 2. Raccolta importti di fallback globale (priorità bassa)
-        const FALLBACK_PRIORITY = 10;
-        for (let i = 0; i < lines.length; i++) {
-            const lineContent = lines[i].trim();
-            if (!lineContent) continue;
-
-            // Evita di aggiungere come fallback importti già considerati dalle keyword (se la riga contiene una keyword)
-            let lineContainsTotalKeyword = false;
-            for (const kwConfig of totalKeywordsConfig) {
-                if (kwConfig.regex.test(lineContent)) {
-                    lineContainsTotalKeyword = true;
+                    tipoDocumento = key;
+                    tipoDocTrovato = true;
+                    console.log(`[Parsing TipoDoc] Trovato: ${tipoDocumento} sulla riga: "${line}"`);
                     break;
                 }
             }
-            if (lineContainsTotalKeyword) continue; // Salta se la riga è già stata processata (o lo sarà) dalle keyword principali
+        }
+        if (!tipoDocTrovato) {
+            console.log(`[Parsing TipoDoc] Nessuna keyword trovata, usando default: ${tipoDocumento}`);
+        }
 
-            if (!excludeKeywords.test(lineContent)) {
-                amountRegex.lastIndex = 0;
-                let match;
-                while ((match = amountRegex.exec(lineContent)) !== null) {
-                    potentialAmounts.push({
-                        value: match[1],
-                        priority: FALLBACK_PRIORITY,
-                        lineContext: lineContent,
-                        debugSource: 'Fallback globale'
-                    });
+        // --- 2. ESTRAZIONE DESCRIZIONE (NOME NEGOZIO/FORNITORE) ---
+        const nomiNegoziKeywords = [
+            // Marchi noti di supermercati (priorità più alta)
+            "EUROSPIN", "LIDL", "CONAD", "COOP", "ESSELUNGA", "ALDI", "MD SPA", "CARREFOUR", "IPER",
+            // Altri tipi di negozi/servizi
+            "SUPERMERCATO", "MARKET", "PANIFICIO", "PASTICCERIA", "MACELLERIA", "FARMACIA", "PARAFARMACIA",
+            "RISTORANTE", "PIZZERIA", "TRATTORIA", "OSTERIA", "BAR ", "CAFFE'",
+            "Q8", "ENI", "AGIP", "SHELL", "TOTAL", "ERG", "IP ", "TAMOIL", "DISTRIBUTORE",
+            "MEDIAWORLD", "UNIEURO", "EURONICS", "TRONY", "EXPERT",
+            "LEROY MERLIN", "IKEA", "BRICOMAN", "BRICO ",
+            "DECATHLON", "ZARA", "H&M", "OVIESSE", "UPIM", "BENETTON"
+        ];
+        
+        // Aggiungiamo una ricerca specifica per EUROSPIN che è spesso presente negli scontrini
+        let euroSpinFound = false;
+        for (const line of lines) {
+            if (line.toUpperCase().includes("EUROSPIN") || line.toUpperCase().includes("EURO SPIN")) {
+                nomeNegozio = "EUROSPIN";
+                nomeNegozioTrovato = true;
+                euroSpinFound = true;
+                console.log(`[Parsing NomeNegozio] Trovato EUROSPIN con ricerca specifica`);
+                break;
+            }
+        }
+        
+        // Procediamo con la normale ricerca di keyword solo se non abbiamo già trovato EUROSPIN
+        if (!euroSpinFound) {
+            let negozioDaKeyword = null;
+
+            // Prima passata: solo keywords
+            for (let i = 0; i < Math.min(lines.length, 15); i++) {
+                let line = lines[i].trim();
+                if (line.length < 3 || line.length > 70) continue;
+                const upperLine = line.toUpperCase();
+
+                for (const nome of nomiNegoziKeywords) {
+                    if (upperLine.includes(nome)) {
+                        negozioDaKeyword = nome.trim();  // usa solo la keyword corretta
+                        nomeNegozioTrovato = true;
+                        console.log(`[Parsing NomeNegozio] Trovato con keyword "${nome}": "${negozioDaKeyword}"`);
+                        break;
+                    }
+                }
+                if (nomeNegozioTrovato) break;
+            }
+
+            if (nomeNegozioTrovato) {
+                nomeNegozio = sanitizeStoreName(negozioDaKeyword);
+            } else {
+                // Seconda passata: euristica (se nessuna keyword trovata)
+                // Applica l'euristica a partire dalla seconda riga (i=1) per evitare rumore comune all'inizio.
+                for (let i = 1; i < Math.min(lines.length, 15); i++) { // MODIFICA: parte da i = 1
+                    let line = lines[i].trim();
+                    if (line.length < 3 || line.length > 70) continue;
+                    const upperLine = line.toUpperCase();
+
+                    // MODIFICA: Richiede almeno 1 parola e almeno 3 caratteri alfabetici
+                    if (line.split(/\\s+/).length >= 1 && line.split(/\\s+/).length <= 5) { 
+                        const alphaCharsInLine = (upperLine.match(/[A-ZÀ-ÿ]/g) || []).length;
+                        if (alphaCharsInLine >= 3) {
+                            if (!paroleDaEvitarePerNomeNegozio.some(keyword => upperLine.includes(keyword.toUpperCase()))) {
+                                if (upperLine.match(/[A-ZÀ-ÿ]/) && !upperLine.match(/^\\d+\\s*$/)) { 
+                                    const regexPartitaIvaApprox = /(P\\.?\\s*IVA|IT\\s*\\d{11})/i;
+                                    const regexIndirizzoApprox = /(VIA|VIALE|PIAZZA|CORSO|NUMERO CIVICO|NC)/i;
+                                    if (!regexPartitaIvaApprox.test(upperLine) && !regexIndirizzoApprox.test(upperLine)) {
+                                        nomeNegozio = line;
+                                        nomeNegozioTrovato = true; 
+                                        console.log(`[Parsing NomeNegozio] Trovato (euristica, da riga ${i}): "${nomeNegozio}"`);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (!nomeNegozioTrovato) { 
+            console.log(`[Parsing NomeNegozio] Nessun nome negozio adatto trovato, usando default: "${nomeNegozio}" (default attuale: 'spesa')`);
+        }
+
+
+        // --- 3. ESTRAZIONE TIPO SPESA (basato su nome negozio e altre keyword) ---
+        // Questa logica è simile alla vecchia "categoria"
+        const tipoSpesaKeywords = {
+            "MATERIALI": ["FERRAMENTA", "RICAMBIO", "ATTREZZO", "MATERIALE", "VERNICE", "LEGNO", "METALLO", "PLASTICA", "PEZZI", "RICAMBI", "ACCESSORI AUTO", "COMPONENTI"],
+            "CAPO": ["ABBIGLIAMENTO", "SCARPE", "VESTITI", "MODA", "BOUTIQUE", "CALZATURE", "INTIMO", "ACCESSORI", "ZARA", "H&M", "OVIESSE", "UPIM", "BENETTON", "DECATHLON", "CALZATURE", "INDUMENTI", "UNIFORME"],
+            "AUTO": ["CARBURANTE", "BENZINA", "DIESEL", "GPL", "METANO", "STAZIONE SERVIZIO", "DISTRIBUTORE", "Q8", "ENI", "AGIP", "SHELL", "TOTAL", "ERG", "IP ", "TAMOIL", "FUEL", "OFFICINA", "MECCANICO", "GOMME", "PNEUMATICI", "AUTOSTRADA", "PARCHEGGIO", "PEDAGGIO", "TELEPASS"],
+            "TASSE": ["TASSE", "BOLLO", "F24", "AGENZIA ENTRATE", "INPS", "CAMERA COMMERCIO", "FISCO", "IMPOSTA", "IVA", "IRPEF", "IMU", "TARI", "TRIBUTO"],
+            "COMMERCIALISTA": ["COMMERCIALISTA", "CONSULENZA", "CONSULENTE", "PARCELLA", "FATTURA COMMERCIALISTA", "DOTTORE COMMERCIALISTA"],
+            "SPESE CASA": ["ALIMENTARI", "EUROSPIN", "ALDI", "LIDL", "CONAD", "COOP", "ESSELUNGA", "MD SPA", "CARREFOUR", "IPER", "SUPERMERCATO", "MARKET", "PANE", "PANIFICIO", "PASTICCERIA", "MACELLERIA", "SALUMERIA", "FRUTTA", "VERDURA", "GASTRONOMIA", "CIBO", "DROGHERIA", "FARMACIA", "PARAFARMACIA", "MEDICINALI", "SANITARI", "CURA PERSONA", "IGIENE", "CASA", "CASALINGHI"],
+            "MAGAZZINO": ["MAGAZZINO", "DEPOSITO", "STOCCAGGIO", "SCAFFALE", "SCATOLA", "IMBALLO", "FORNITURA", "CONTENITORE", "UTENSILI", "STORAGE"],
+            "EXTRA": ["RISTORANTE", "PIZZERIA", "TRATTORIA", "OSTERIA", "BAR", "CAFFE", "PUB", "TAVOLA CALDA", "MENU", "COPERTO", "PRANZO", "CENA", "COLAZIONE", "APERITIVO", "FOOD", "FASTFOOD", "CINEMA", "TEATRO", "MUSEO", "LIBRI", "LIBRERIA", "GIORNALI", "RIVISTE", "CONCERTO", "EVENTI", "SPORT", "PALESTRA", "PISCINA", "ARREDO", "OGGETTISTICA", "LEROY MERLIN", "IKEA", "BRICOMAN", "INFORMATICA", "ELETTRONICA", "MEDIAWORLD", "UNIEURO", "EURONICS", "SMARTPHONE", "TELEFONIA", "BIGLIETTO", "TRENO", "AUTOBUS", "AEREO", "VOLO", "VIAGGIO", "HOTEL", "ALBERGO", "ASSICURAZIONE", "SERVIZI", "BOLLETTA", "UTENZE"]
+        };
+
+        let scoresTipoSpesa = {};
+        for (const tsCat in tipoSpesaKeywords) { scoresTipoSpesa[tsCat] = 0; }
+
+        const nomeNegozioUpper = nomeNegozio.toUpperCase();
+
+        // Punteggio forte basato sul nome del negozio trovato
+        if (nomeNegozioTrovato && nomeNegozio !== "N/D") {
+            for (const tsCat in tipoSpesaKeywords) {
+                for (const keyword of tipoSpesaKeywords[tsCat]) {
+                    if (nomeNegozioUpper.includes(keyword)) {
+                        scoresTipoSpesa[tsCat] += 5;
+                        console.log(`[Parsing TipoSpesa DEBUG] Bonus forte per '${keyword}' in nomeNegozio '${nomeNegozio}' per tipoSpesa '${tsCat}'`);
+                    }
+                }
+            }
+        }
+
+        // Punteggio basato su tutte le righe solo se non abbiamo trovato il nome negozio
+        if (!nomeNegozioTrovato) {
+            for (const line of lines) {
+                const upperLine = line.toUpperCase();
+                for (const tsCat in tipoSpesaKeywords) {
+                    for (const keyword of tipoSpesaKeywords[tsCat]) {
+                        if (upperLine.includes(keyword.toUpperCase())) {
+                            scoresTipoSpesa[tsCat]++;
+                        }
+                    }
+                }
+            }
+        }
+
+        let maxScoreTipoSpesa = 0;
+        let bestTipoSpesa = "EXTRA"; // Default allineato con le nuove categorie
+
+        for (const tsCat in scoresTipoSpesa) {
+            if (scoresTipoSpesa[tsCat] > maxScoreTipoSpesa) {
+                maxScoreTipoSpesa = scoresTipoSpesa[tsCat];
+                bestTipoSpesa = tsCat;
+            }
+        }
+        
+        // Assicuriamoci che EUROSPIN sia sempre mappato a SPESE CASA
+        if (nomeNegozio === "EUROSPIN" || nomeNegozioUpper.includes("EUROSPIN")) {
+            bestTipoSpesa = "SPESE CASA";
+            console.log("[Parsing TipoSpesa] Forzato a SPESE CASA per EUROSPIN");
+        }
+        
+        if (maxScoreTipoSpesa > 0) {
+            tipoSpesa = bestTipoSpesa;
+        }
+        
+        console.log(`[Parsing TipoSpesa DEBUG] Punteggi finali:`, scoresTipoSpesa);
+        console.log(`[Parsing TipoSpesa] Tipo spesa estratto: ${tipoSpesa} (Punteggio: ${maxScoreTipoSpesa})`);
+
+
+        // --- 4. ESTRAZIONE IMPORTO (logica precedente, adattata per nome variabile) ---
+        const totalKeywordsStrong = ['TOTALE COMPLESSIVO', 'IMPORTO PAGATO'];
+        const totalKeywordsMedium = ['TOTALE EURO', 'TOTALE EUR', 'TOTALE €'];
+        const totalKeywordsGeneral = ['TOTALE', 'IMPORTO', 'EURO', 'EUR', 'TOT', 'NETTO'];
+
+        const importoRegex = /(\\d{1,3}(?:[.,]\\d{3})*(?:\\s*[,.]\\s*\\d{2}))(?:\\s?(?:EUR|€))?$/; 
+        const importoRegexSimple = /(\d+\s*[,.]\s*\d{2})/; 
+        // const specificTotalPattern = /t\s+(\d+\s*[,.]\s*\d{2})\s+e/i; // VECCHIO
+        const specificTotalPattern = /[^a-zA-Z0-9\n]*t\s*(\d+[\s,.]+\d{2})\s*e/i; // NUOVO: più robusto a caratteri iniziali e spaziature interne
+
+        let potentialTotals = [];
+
+        // Fase 1: Ricerca keyword forti e pattern specifico (es. "t XX,YY e")
+        console.log("[Parsing Fase 1] Avvio ricerca prioritaria.");
+        for (let i = lines.length - 1; i >= 0; i--) {
+            const line = lines[i].trim();
+            // console.log(`[Parsing Fase 1 DEBUG] Processing line ${i}: \"${line}\" (Length: ${line.length})`); // Log di debug generale per ogni riga processata
+            if (!line) continue;
+            const upperLine = line.toUpperCase();
+
+            // DEBUGGING MIRATO per il pattern specifico e la riga problematica
+            if (line.includes("25, 80") || (line.toLowerCase().includes("t") && line.toLowerCase().includes("e"))) { 
+                console.log(`[Parsing Fase 1 DEBUG] Linea ${i} sospetta: "${line}" (Lunghezza: ${line.length})`);
+                // Log dei codici carattere per ispezione più approfondita
+                let charCodes = '';
+                for(let k=0; k < line.length; k++) {
+                    charCodes += line.charCodeAt(k) + ' ';
+                }
+                console.log(`[Parsing Fase 1 DEBUG] Codici Carattere linea ${i}: ${charCodes.trim()}`);
+                const specificMatchPatternDebug = line.match(specificTotalPattern); // Usa il NUOVO pattern
+                console.log(`[Parsing Fase 1 DEBUG] Risultato match specificTotalPattern (NUOVO) per linea ${i}:`, specificMatchPatternDebug);
+            }
+
+            const specificMatchPattern = line.match(specificTotalPattern); // Usa il NUOVO pattern
+            if (specificMatchPattern && specificMatchPattern[1]) {
+                let val = specificMatchPattern[1];
+                // Pulizia per trasformare formati come "25, 80" o "25 . 80" o "25  80" in "25.80"
+                val = val.replace(/,/g, '.');      // Sostituisce tutte le virgole con punti
+                val = val.replace(/\s/g, '');       // Rimuove tutti gli spazi bianchi
+                val = val.replace(/\.{2,}/g, '.'); // Sostituisce due o più punti consecutivi con uno solo
+                // Assicura che ci sia al massimo un punto decimale, prendendo l'ultimo come riferimento
+                const lastDotIndex = val.lastIndexOf('.');
+                if (lastDotIndex !== -1) {
+                    const integerPart = val.substring(0, lastDotIndex).replace(/\./g, ''); // Rimuovi tutti i punti dalla parte intera
+                    const decimalPart = val.substring(lastDotIndex + 1);
+                    val = `${integerPart}.${decimalPart}`;
+                }
+
+                console.log(`[Parsing Fase 1a] Importo trovato con pattern "t XX,YY e": ${val} (originale catturato: "${specificMatchPattern[1]}") sulla riga: "${line}"`);
+                potentialTotals.push({ value: val, lineIndex: i, strength: 10, source: "Pattern 't XX,YY e'" });
+            }
+
+            for (const keyword of totalKeywordsStrong) {
+                if (upperLine.includes(keyword)) {
+                    // Cerca nelle 2 righe sopra, sulla stessa riga, e nelle 2 righe sotto (rispetto alla keyword)
+                    for (let j = Math.max(0, i - 2); j <= Math.min(lines.length - 1, i + 2); j++) {
+                        const targetLine = lines[j].trim();
+                        let match = targetLine.match(importoRegex) || targetLine.match(importoRegexSimple);
+                        if (match && match[1]) {
+                            const val = match[1].replace(/\\s/g, '').replace(',', '.');
+                            console.log(`[Parsing Fase 1b] Importo "${val}" trovato vicino a keyword forte "${keyword}" sulla riga (idx ${j}): "${targetLine}" (keyword a idx ${i})`);
+                            potentialTotals.push({ value: val, lineIndex: j, strength: 9, keyword: keyword, source: "Keyword Forte + Regex" });
+                        }
+                        const specificNearbyMatch = targetLine.match(specificTotalPattern);
+                         if (specificNearbyMatch && specificNearbyMatch[1]) {
+                            const val = specificNearbyMatch[1].replace(/\\s/g, '').replace(',', '.');
+                            console.log(`[Parsing Fase 1c] Importo (pattern "t XX,YY e") "${val}" trovato vicino a keyword forte "${keyword}" sulla riga (idx ${j}): "${targetLine}"`);
+                            potentialTotals.push({ value: val, lineIndex: j, strength: 10, keyword: keyword, source: "Keyword Forte + Pattern 't XX,YY e'" });
+                        }
+                    }
+                }
+            }
+        }
+
+        if (potentialTotals.length > 0) {
+            potentialTotals.sort((a, b) => {
+                if (b.strength !== a.strength) return b.strength - a.strength; // Priorità a strength maggiore
+                return b.lineIndex - a.lineIndex; // Poi alla riga più in basso (indice maggiore)
+            });
+            const bestCandidate = potentialTotals.find(p => parseFloat(p.value) > 0); // Prendi il primo valido
+            if (bestCandidate) {
+                importo = bestCandidate.value;
+                console.log(`[Parsing Fase 1] Scelto importo: ${importo} (da riga ${bestCandidate.lineIndex}, strength ${bestCandidate.strength}, source: ${bestCandidate.source})`);
+            }
+        }
+
+        // Fase 2: Fallback - Ricerca keyword medie e generali (se non trovato un importo forte)
+        if (parseFloat(importo) === 0) {
+            console.log("[Parsing Fase 2] Avvio ricerca con keyword medie e generali.");
+            let generalPotentialTotals = [];
+            const searchDepth = Math.min(lines.length, 20); // Aumentata un po' la profondità
+            for (let i = lines.length - 1; i >= Math.max(0, lines.length - searchDepth); i--) {
+                const line = lines[i].trim();
+                if (!line) continue;
+                const upperLine = line.toUpperCase();
+
+                const allKeywords = [...totalKeywordsMedium, ...totalKeywordsGeneral];
+                for (const keyword of allKeywords) {
+                    if (upperLine.includes(keyword)) {
+                        let match = line.match(importoRegex) || line.match(importoRegexSimple);
+                        if (match && match[1]) {
+                            const val = match[1].replace(/\\s/g, '').replace(',', '.');
+                            console.log(`[Parsing Fase 2a] Importo "${val}" trovato con keyword "${keyword}" sulla riga: "${line}"`);
+                            generalPotentialTotals.push({ value: val, lineIndex: i, keyword: keyword });
+                        }
+                        if (i + 1 < lines.length) {
+                            const nextLine = lines[i+1].trim();
+                            match = nextLine.match(importoRegex) || nextLine.match(importoRegexSimple);
+                            if (match && match[1]) {
+                                 const val = match[1].replace(/\\s/g, '').replace(',', '.');
+                                 console.log(`[Parsing Fase 2b] Importo "${val}" trovato sulla riga successiva a keyword "${keyword}": "${nextLine}"`);
+                                 generalPotentialTotals.push({ value: val, lineIndex: i + 1, keyword: keyword });
+                            }
+                        }
+                    }
+                }
+            }
+            if (generalPotentialTotals.length > 0) {
+                generalPotentialTotals.sort((a,b) => b.lineIndex - a.lineIndex); 
+                const chosen = generalPotentialTotals.find(pt => parseFloat(pt.value) > 0);
+                if (chosen) {
+                    importo = chosen.value;
+                    console.log(`[Parsing Fase 2] Scelto importo: ${importo} (da riga ${chosen.lineIndex} con keyword ${chosen.keyword})`);
+                }
+            }
+        }
+
+        // Fase 3: Fallback estremo - euristica per importo isolato nelle ultime righe
+        if (parseFloat(importo) === 0) {
+            console.log("[Parsing Importo Fase 3] Avvio euristica per importo isolato.");
+            const lastLinesSearchDepth = Math.min(lines.length, 7);
+            for (let i = lines.length - 1; i >= Math.max(0, lines.length - lastLinesSearchDepth); i--) {
+                const line = lines[i].trim();
+                if (!line) continue;
+                const match = line.match(importoRegexSimple); 
+                if (match && match[1]) {
+                    const textPart = line.replace(match[1], '').replace(/[^a-zA-Z]/g, ''); 
+                    if (textPart.length < 5 || line.toUpperCase().includes("RESTO")) { // Considera anche "RESTO"
+                        const val = match[1].replace(/\\s/g, '').replace(',', '.');
+                        if (parseFloat(val) > 0) { 
+                            importo = val;
+                            console.log(`[Parsing Fase 3] Importo trovato (euristico): ${importo} dalla riga: "${line}"`);
+                            break; 
+                        }
+                    }
                 }
             }
         }
         
-        // Rimuovi duplicati (stesso valore, priorità, contesto) prima dell'ordinamento
-        potentialAmounts = potentialAmounts.filter((amount, index, self) =>
-            index === self.findIndex((t) => (
-                t.value === amount.value && 
-                t.priority === amount.priority && 
-                t.lineContext === amount.lineContext
-            ))
-        );
-
-        // 3. Ordinamento e selezione finale
-        console.log("Importi potenziali PRIMA dell'ordinamento (dopo deduplica):", JSON.stringify(potentialAmounts, null, 2));
-
-        if (potentialAmounts.length > 0) {
-            potentialAmounts.sort((a, b) => {
-                if (a.priority !== b.priority) {
-                    return a.priority - b.priority;
+        // --- 5. ESTRAZIONE DATA (logica precedente, adattata per nome variabile) ---
+        const dateRegex = /(\\d{2}[\\/.-]\\d{2}[\\/.-]\\d{2,4})/;
+        for (const line of lines) {
+            const match = line.match(dateRegex);
+            if (match && match[1]) {
+                // Semplice validazione per vedere se assomiglia a una data plausibile
+                // Questo non valida se la data è reale (es. 30/02/2025)
+                const parts = match[1].split(/[\\/.-]/);
+                if (parts.length === 3) {
+                    const day = parseInt(parts[0], 10);
+                    const month = parseInt(parts[1], 10);
+                    // Year può essere a 2 o 4 cifre
+                    if (day > 0 && day <= 31 && month > 0 && month <= 12) {
+                        dataScontrino = match[1];
+                        console.log(`[Parsing] Data trovata: ${dataScontrino} dalla riga: "${line}"`);
+                        break;
+                    }
                 }
-                return parseValueToFloat(b.value) - parseValueToFloat(a.value);
+            }
+        }
+
+
+        // Log the combined description for debugging or other purposes if needed
+        // console.log(`[Parsing] Descrizione combinata (per log): ${descrizione} (Importo: ${importo}, Data: ${dataScontrino})`);
+
+        const scontrinoData = {
+            tipoDocumento: tipoDocumento, // Es. "Scontrino Fiscale"
+            data: dataScontrino,
+            importo: importo,
+            categoria: categoriaContabile, // Es. "Uscite"
+            tipoSpesa: tipoSpesa,          // Es. "Spese Casa", "Carburante"
+            descrizione: nomeNegozio       // Es. "ALDI", "LIDL"
+        };
+        console.log("[Parsing] Dati estratti finali:", scontrinoData);
+        return scontrinoData;
+    }
+
+    // Funzione per aggiungere una riga alla tabella dei risultati
+    function addRowToTable(data) {
+        const tableBody = document.getElementById('recordedDataBody');
+         if (!tableBody) {
+            console.error("[UI Update] Elemento tableBody 'recordedDataBody' non trovato.");
+            return;
+         }
+         const newRow = tableBody.insertRow();
+
+         // Ensure data fields exist, providing fallbacks if necessary
+         const dataScontrino = data.data || 'N/A';
+         const categoriaContabile = data.categoria || 'N/A';
+         const tipoSpesa = data.tipoSpesa || 'N/A';
+         const importo = data.importo || '0.00';
+         const nomeNegozio = data.descrizione || 'N/A';
+
+         // Order of columns in the HTML table: Data, Categoria, Tipo, Importo (€), Descrizione, Elimina
+         const cellsData = [
+             dataScontrino,
+             categoriaContabile,
+             tipoSpesa,
+             importo,
+             nomeNegozio
+         ];
+
+         cellsData.forEach(text => {
+             const cell = newRow.insertCell();
+             cell.textContent = text;
+         });
+
+         // Bottone Elimina
+         const deleteCell = newRow.insertCell();
+         const deleteButton = document.createElement('button');
+         deleteButton.textContent = 'Elimina';
+         deleteButton.className = 'button is-danger is-small';
+         deleteButton.onclick = function() {
+            // Rimuovi la riga dalla tabella
+            const row = this.parentNode.parentNode;
+            row.parentNode.removeChild(row);
+            
+            // Opzionale: Rimuovi i dati dall'array currentData se lo stai usando per popolare la tabella
+            // Trova l'indice dell'oggetto dati corrispondente e rimuovilo
+            // Questo presuppone che tu abbia un modo per identificare univocamente i dati della riga
+            // o che l'ordine in currentData corrisponda all'ordine nella tabella.
+            // Esempio:
+            // const rowIndex = Array.from(tableBody.rows).indexOf(row);
+            // if (rowIndex > -1 && currentDataArray[rowIndex]) { // Assumendo che currentData sia un array
+            //     currentDataArray.splice(rowIndex, 1);
+            //     console.log('[UI Update] Dati rimossi da currentDataArray.');
+            // }
+            // Aggiorna la visualizzazione dei dati grezzi e parsati se necessario
+            // rawTextDiv.textContent = '';
+            // parsedDataDiv.innerHTML = ''; // o un messaggio di default
+            console.log('[UI Update] Riga eliminata dalla tabella.');
+        };
+        deleteCell.appendChild(deleteButton);        console.log('[UI Update] Nuova riga aggiunta alla tabella per i dati del scontrino.');
+        // Aggiorna il display "Dati Estratti" se esistente (invece di chiamare una funzione separata)
+        if (parsedDataDiv) {
+            parsedDataDiv.innerHTML = formatScontrinoDataForDisplay(data);
+        }
+    }
+    
+    // Formatta i dati dello scontrino per la visualizzazione nel pannello "Dati Estratti"
+    function formatScontrinoDataForDisplay(data) {
+        if (!data) return '<p>Nessun dato estratto</p>';
+          return `
+            <div class="parsed-data-container">
+                <div class="parsed-data-row"><strong>Tipo Documento:</strong> ${data.tipoDocumento || 'N/D'}</div>
+                <div class="parsed-data-row"><strong>Data:</strong> ${data.data || 'N/D'}</div>
+                <div class="parsed-data-row"><strong>Importo:</strong> ${data.importo || '0.00'} €</div>
+                <div class="parsed-data-row"><strong>Categoria:</strong> ${data.categoria || 'N/D'}</div>
+                <div class="parsed-data-row"><strong>Tipo Spesa:</strong> ${data.tipoSpesa || 'N/D'}</div>
+                <div class="parsed-data-row"><strong>Descrizione:</strong> ${data.descrizione || 'N/D'}</div>
+            </div>
+        `;
+    }
+    
+    // Funzioni di supporto mancanti
+    function sanitizeStoreName(name) {
+        // Rimuove caratteri speciali e spazi in eccesso
+        if (!name) return "N/D";
+        return name.trim().replace(/[^\w\sàèìòùÀÈÌÒÙ]/g, ' ').replace(/\s+/g, ' ');
+    }
+
+    // Event handler per il pulsante di caricamento
+    caricaScontrinoBtn.addEventListener('click', () => {
+        scontrinoInput.click();
+    });
+
+    // Event handler per l'input del file
+    scontrinoInput.addEventListener('change', async (e) => {
+        if (e.target.files.length === 0) {
+            console.log('[Input] Nessun file selezionato.');
+            return;
+        }
+
+        const file = e.target.files[0];        if (!file.type.match('image.*')) {
+            statusDiv.textContent = 'Per favore, seleziona un\'immagine valida.';
+            console.error('[Input] File non valido: ', file.type);
+            return;
+        }
+
+        // Aggiorna lo stato
+        statusDiv.textContent = 'Elaborazione in corso...';
+        rawTextDiv.textContent = 'Riconoscimento testo in corso...';
+        parsedDataDiv.innerHTML = '<p>In attesa dei risultati...</p>';
+        
+        try {
+            // Inizializza Tesseract.js con percorsi espliciti per i file locali.
+            // È fondamentale che tutti i file di Tesseract.js (tesseract.min.js, worker.min.js, 
+            // tesseract-core.wasm.js e ita.traineddata) provengano dalla STESSA versione.
+            const worker = await Tesseract.createWorker({
+                logger: m => console.log('[Tesseract]', m)
             });
 
-            console.log("Importi potenziali DOPO l'ordinamento:", JSON.stringify(potentialAmounts, null, 2));
-            newItem.importo = potentialAmounts[0].value;
-            console.log(`Importo finale selezionato: ${newItem.importo} (Priorità: ${potentialAmounts[0].priority}, Valore: ${parseValueToFloat(potentialAmounts[0].value)}, Contesto: "${potentialAmounts[0].lineContext}", Sorgente: ${potentialAmounts[0].debugSource})`);
-        } else {
-            console.log("Nessun importo valido trovato dopo tutti i passaggi.");
-        }
+            // Carica il modello italiano
+            await worker.loadLanguage('ita');
+            // await worker.initialize('ita'); // Rimosso: `recognize` dovrebbe inizializzare se necessario.
 
-        // bottom-lines fallback se nessun importo guidato
-        if (potentialAmounts.length === 0) {
-            console.log("Guided extraction failed; using bottom-lines fallback.");
-            const bottomCount = Math.min(10, lines.length);
-            const bottomLines = lines.slice(-bottomCount);
-            let bottomAmounts = [];
-            for (const bottomLine of bottomLines) {
-                const trimmedLine = bottomLine.trim();
-                if (!trimmedLine || excludeKeywords.test(trimmedLine)) continue;
-                amountRegex.lastIndex = 0;
-                let m;
-                while ((m = amountRegex.exec(trimmedLine)) !== null) {
-                    bottomAmounts.push(m[1]);
-                }
-            }
-            if (bottomAmounts.length > 0) {
-                const maxAmount = bottomAmounts.reduce((max, curr) =>
-                    parseValueToFloat(curr) > parseValueToFloat(max) ? curr : max
-                );
-                newItem.importo = maxAmount;
-                console.log(`Bottom-lines fallback selected: ${newItem.importo}`);
-                return newItem;
-            }
-        }
+            // Imposta i parametri di tesseract per ottenere risultati migliori
+            await worker.setParameters({
+                tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,;:€$£°+-=()[]{}/\\\'\" ÀÈÌÒÙàèìòù',
+                preserve_interword_spaces: '1',
+                user_defined_dpi: '300',
+                tessedit_pageseg_mode: '4', // PSM_SINGLE_BLOCK (per scontrini)
+            });
 
-        return newItem;
-    }
+            console.log('[OCR] Avvio riconoscimento testo...');
+            statusDiv.textContent = 'Riconoscimento testo in corso...';
 
-    function addRowToTable(dataItem) {
-        const row = document.createElement('tr');
-
-        const tipoCell = document.createElement('td');
-        tipoCell.textContent = dataItem.type;
-        row.appendChild(tipoCell);
-
-        const dataCell = document.createElement('td');
-        dataCell.textContent = dataItem.data;
-        row.appendChild(dataCell);
-
-        const importoCell = document.createElement('td');
-        importoCell.textContent = dataItem.importo;
-        row.appendChild(importoCell);
-
-        const categoriaCell = document.createElement('td');
-        categoriaCell.textContent = dataItem.categoria;
-        row.appendChild(categoriaCell);
-
-        const descrizioneCell = document.createElement('td');
-        descrizioneCell.textContent = dataItem.descrizione;
-        row.appendChild(descrizioneCell);
-
-        recordedDataTableBody.appendChild(row);
-    }
-
-    clearListButton.addEventListener('click', () => {
-        if (confirm('Sei sicuro di voler cancellare tutti i dati registrati?')) {
-            localStorage.removeItem(storageKey);
-            recordedDataTableBody.innerHTML = '';
-            currentData = [];
-            statusDiv.textContent = 'Tutti i dati sono stati rimossi.';
+            // Esegui OCR
+            // Rimuovi il logger da qui se lo hai messo in createWorker
+            const result = await worker.recognize(file, 'ita' /*, { logger: globalTesseractLogger } */);
+            console.log('[OCR] Riconoscimento completato con confidenza:', result.data.confidence);
+            
+            // Visualizza il testo riconosciuto
+            rawTextDiv.textContent = result.data.text;
+            statusDiv.textContent = 'Elaborazione completata!';
+            
+            // Estrai e visualizza i dati
+            const parsedData = parseScontrinoText(result.data.text);
+            
+            // Aggiungi alla tabella
+            addRowToTable(parsedData);
+            
+            // Rilascia il worker per liberare memoria
+            await worker.terminate();
+            
+            console.log('[OCR] Elaborazione completata con successo.');
+            
+        } catch (error) {
+            console.error('[OCR] Errore durante l\'elaborazione:', error);
+            statusDiv.textContent = 'Errore durante l\'elaborazione: ' + error.message;
+            rawTextDiv.textContent = 'Si è verificato un errore.';
+            parsedDataDiv.innerHTML = '<p>Errore durante l\'estrazione dei dati.</p>';
         }
     });
+
+    // Event listener per il bottone di pulizia della lista (se esiste)
+    const clearListButton = document.getElementById('clearListButton');
+    if (clearListButton) {
+        clearListButton.addEventListener('click', () => {
+            const tableBody = document.getElementById('recordedDataBody');
+            if (tableBody) {
+                tableBody.innerHTML = '';
+                console.log('[UI Update] Tabella dati pulita.');
+            }
+            
+            // Resetta anche i div di visualizzazione
+            if (rawTextDiv) rawTextDiv.textContent = '...';
+            if (parsedDataDiv) parsedDataDiv.innerHTML = '...';
+            if (statusDiv) statusDiv.textContent = 'Pronto per iniziare...';
+        });
+    }
 });
